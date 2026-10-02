@@ -419,3 +419,84 @@ button[class*="bg-rose"],
 button[class*="bg-blue"] {
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
 }
+
+.mobile-menu-button {
+    display: none;
+    width: 40px;
+    height: 40px;
+    flex: 0 0 40px;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid rgba(170, 192, 219, 0.15);
+    border-radius: 12px;
+    background: rgba(15, 22, 36, 0.88);
+    color: #9eb7d6;
+}
+
+.mobile-drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    visibility: hidden;
+    background: rgba(4, 7, 13, 0.72);
+    opacity: 0;
+    transition: opacity 180ms ease, visibility 180ms ease;
+    backdrop-filter: blur(8px);
+}
+
+.mobile-drawer-backdrop.is-open {
+    visibility: visible;
+    opacity: 1;
+}
+
+.mobile-drawer {
+    position: fixed;
+    inset: 0 auto 0 0;
+    z-index: 61;
+    display: flex;
+    width: min(320px, calc(100vw - 48px));
+    flex-direction: column;
+    justify-content: space-between;
+    padding: 20px;
+    border-right: 1px solid var(--apple-border-strong);
+    background: rgba(10, 15, 24, 0.96);
+    box-shadow: 20px 0 60px rgba(0, 0, 0, 0.35);
+    transform: translateX(-105%);
+    transition: transform 220ms ease;
+    backdrop-filter: blur(24px) saturate(160%);
+}
+
+.mobile-drawer.is-open { transform: translateX(0); }
+.mobile-drawer-heading { display: flex; align-items: center; justify-content: space-between; padding-bottom: 18px; border-bottom: 1px solid var(--apple-border); }
+.mobile-drawer-brand { display: flex; align-items: center; gap: 12px; color: var(--apple-text); text-decoration: none; font: 800 13px "JetBrains Mono", monospace; }
+.mobile-drawer-brand > span:first-child { display: grid; width: 38px; height: 38px; place-items: center; border: 1px solid rgba(37, 99, 235, 0.35); border-radius: 11px; background: linear-gradient(135deg, #2563eb, #111d38); }
+.mobile-drawer-brand small { display: block; margin-top: 4px; color: #d3b38b; font-size: 9px; }
+.mobile-drawer-close { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid var(--apple-border); border-radius: 9px; background: #0f1624; color: #b1bfd0; }
+.mobile-drawer-label { margin: 22px 10px 10px; color: #8698ab; font: 700 9px "JetBrains Mono", monospace; letter-spacing: 0.1em; }
+.mobile-drawer nav { display: grid; gap: 4px; }
+.mobile-drawer-link { display: flex; min-height: 46px; align-items: center; gap: 12px; padding: 0 12px; border-radius: 9px; color: #b1bfd0; font: 600 12px "JetBrains Mono", monospace; text-decoration: none; }
+.mobile-drawer-link:hover, .mobile-drawer-link.nav-tab-active { background: rgba(146, 162, 182, 0.12); color: #f2f7ff; }
+.mobile-drawer-footer { display: grid; gap: 11px; padding-top: 16px; border-top: 1px solid var(--apple-border); color: #8698ab; font: 10px "JetBrains Mono", monospace; }
+.mobile-drawer-footer span { display: flex; justify-content: space-between; gap: 8px; }
+.mobile-drawer-footer b { color: #d3b38b; font-weight: 600; }
+
+@media (max-width: 860px) {
+    .mobile-menu-button:not([hidden]) { display: inline-flex; }
+    header > div { display: flex; flex-wrap: nowrap; gap: 10px; }
+    header > div > a:first-of-type { min-width: 0; flex: 1; }
+    header > div > a:first-of-type > span:last-child { white-space: nowrap; }
+    header > div > div:last-child { flex: 0 0 auto; }
+}
+
+@media (max-width: 480px) {
+    .mobile-menu-button { width: 36px; height: 36px; flex-basis: 36px; }
+    header > div { padding-inline: 10px !important; }
+    header > div > a:first-of-type { font-size: 11px; }
+    header > div > a:first-of-type > span:first-child { width: 32px; height: 32px; }
+    #openTradePanel { right: 12px; width: min(320px, calc(100vw - 24px)); }
+    #openTradePanelMinimized { right: 12px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .mobile-drawer, .mobile-drawer-backdrop { transition-duration: 0.01ms; }
+}

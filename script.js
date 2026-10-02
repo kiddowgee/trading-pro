@@ -33,8 +33,35 @@ let lotSizeMode = 'AUTO';
 let manualCustomLot = 0.10;
 let activeEventFilter = 'ALL';
 let mobileMenuOpen = false;
-let activeOpenTrade = null;
+let activeOpenTrade = readStoredValue('tradeProActiveTrade', null);
 let tradeTrackerInterval = null;
+
+function persistActiveOpenTrade() {
+    try {
+        if (activeOpenTrade) localStorage.setItem('tradeProActiveTrade', JSON.stringify(activeOpenTrade));
+        else localStorage.removeItem('tradeProActiveTrade');
+    } catch {
+        showTradeAlert('Open trade tracking could not be saved in this browser.', 'info');
+    }
+}
+
+function persistChartState() {
+    if (!document.getElementById('page-chart')) return;
+    try {
+        localStorage.setItem('tradeProChartState', JSON.stringify({
+            asset: currentChartAsset,
+            timeframe: currentChartTF,
+            direction: activeTradeDirection,
+            lotMode: lotSizeMode,
+            manualLot: manualCustomLot,
+            entry: document.getElementById('calcPriceEntry')?.value,
+            stop: document.getElementById('calcPriceStop')?.value,
+            target: document.getElementById('calcPriceTarget')?.value
+        }));
+    } catch {
+        // Keep calculator values usable when browser storage is unavailable.
+    }
+}
 
 const assetSpecs = {
     'XAUUSD': {
@@ -413,17 +440,26 @@ function toggleMobileMenu() {
     const drawer = document.getElementById('mobileDrawer');
     const backdrop = document.getElementById('mobileDrawerBackdrop');
     const icon = document.getElementById('hamburgerIcon');
+    const hamburger = document.getElementById('hamburgerBtn');
 
     if (mobileMenuOpen) {
-        if (drawer) drawer.classList.remove('-translate-x-full');
-        if (backdrop) backdrop.classList.remove('hidden');
+        if (drawer) {
+            drawer.classList.add('is-open');
+            drawer.setAttribute('aria-hidden', 'false');
+        }
+        if (backdrop) backdrop.classList.add('is-open');
         if (icon) icon.setAttribute('data-lucide', 'x');
+        if (hamburger) hamburger.setAttribute('aria-expanded', 'true');
     } else {
-        if (drawer) drawer.classList.add('-translate-x-full');
-        if (backdrop) backdrop.classList.add('hidden');
+        if (drawer) {
+            drawer.classList.remove('is-open');
+            drawer.setAttribute('aria-hidden', 'true');
+        }
+        if (backdrop) backdrop.classList.remove('is-open');
         if (icon) icon.setAttribute('data-lucide', 'menu');
+        if (hamburger) hamburger.setAttribute('aria-expanded', 'false');
     }
-    lucide.createIcons();
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function closeMobileMenu() {
@@ -431,11 +467,16 @@ function closeMobileMenu() {
     const drawer = document.getElementById('mobileDrawer');
     const backdrop = document.getElementById('mobileDrawerBackdrop');
     const icon = document.getElementById('hamburgerIcon');
+    const hamburger = document.getElementById('hamburgerBtn');
 
-    if (drawer) drawer.classList.add('-translate-x-full');
-    if (backdrop) backdrop.classList.add('hidden');
+    if (drawer) {
+        drawer.classList.remove('is-open');
+        drawer.setAttribute('aria-hidden', 'true');
+    }
+    if (backdrop) backdrop.classList.remove('is-open');
     if (icon) icon.setAttribute('data-lucide', 'menu');
-    lucide.createIcons();
+    if (hamburger) hamburger.setAttribute('aria-expanded', 'false');
+    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
 function switchPage(pageId) {
@@ -499,6 +540,7 @@ function switchChartAsset(assetKey) {
     document.getElementById('calcPriceTarget').value = quant.tp1;
     setTradeDirection(quant.masterDirection);
     recalculateZarLots();
+    persistChartState();
 }
 
 function switchChartTF(tf) {
@@ -512,6 +554,7 @@ function switchChartTF(tf) {
         }
     });
     initTradingViewChart(assetSpecs[currentChartAsset].tvSymbol, tf);
+    persistChartState();
 }
 
 function setTradeDirection(dir) {
@@ -739,6 +782,7 @@ function finalizeOpenTrade(exitPrice, reason, alertType, alertMessage) {
 
     trade.status = 'CLOSED';
     activeOpenTrade = null;
+    persistActiveOpenTrade();
 
     if (tradeTrackerInterval) {
         clearInterval(tradeTrackerInterval);
@@ -802,10 +846,15 @@ function confirmTradeSetup(direction) {
         }
     };
 
+    persistActiveOpenTrade();
     updateTradeStatusBadge();
     updateOpenTradePanel();
     showTradeAlert(`${direction} ${currentChartAsset} confirmed — ${lotSize.toFixed(2)} lots tracked. TP ${tp.toFixed(2)} / SL ${sl.toFixed(2)}`, 'success');
 
+    startTradeTracking();
+}
+
+function startTradeTracking() {
     if (tradeTrackerInterval) {
         clearInterval(tradeTrackerInterval);
     }
@@ -814,11 +863,15 @@ function confirmTradeSetup(direction) {
         if (!activeOpenTrade || activeOpenTrade.status !== 'OPEN') return;
 
         const livePriceEl = document.getElementById('chartLiveTickPrice');
-        const currentLivePrice = livePriceEl ? parseFloat(livePriceEl.innerText.replace(/[^0-9.]/g, '')) : runQuantAnalysis(currentChartAsset).currentPrice;
+        const currentLivePrice = livePriceEl
+            ? parseFloat(livePriceEl.innerText.replace(/,/g, '').replace(/[^0-9.]/g, ''))
+            : Number.parseFloat(runQuantAnalysis(activeOpenTrade.asset).currentPrice);
 
-        if (!currentLivePrice) return;
+        if (!Number.isFinite(currentLivePrice)) return;
 
         const { direction: tradeDirection, stopLoss, takeProfit } = activeOpenTrade;
+        const livePanelPrice = document.getElementById('openTradeLivePrice');
+        if (livePanelPrice) livePanelPrice.textContent = currentLivePrice.toFixed(activeOpenTrade.asset === 'EURUSD' ? 5 : 2);
         updateMinimizedTradePnl(currentLivePrice);
         const tpHit = tradeDirection === 'BUY'
             ? currentLivePrice >= takeProfit
@@ -908,6 +961,7 @@ function recalculateZarLots() {
     document.getElementById('lotOutPipsSL').innerText = `${pipsSL.toFixed(currentChartAsset === 'EURUSD' ? 4 : 1)} Pips (-R ${Math.round(lossZar).toLocaleString()})`;
     document.getElementById('lotOutPipsTP').innerText = `${pipsTP.toFixed(currentChartAsset === 'EURUSD' ? 4 : 1)} Pips (+R ${Math.round(profitZar).toLocaleString()})`;
     document.getElementById('lotOutMarginZar').innerText = `R ${marginZar.toFixed(2)} ZAR`;
+    persistChartState();
 }
 
 function runGuardrailCheck() {
@@ -1287,6 +1341,104 @@ function signOutDemoSession() {
     window.location.replace('signin.html');
 }
 
+function ensureMobileNavigation(pageId) {
+    const header = document.querySelector('header');
+    const headerContent = header?.firstElementChild;
+    const desktopNav = header?.querySelector('nav');
+    if (!header || !headerContent || !desktopNav || document.getElementById('mobileDrawer')) return;
+
+    const hamburger = document.createElement('button');
+    hamburger.id = 'hamburgerBtn';
+    hamburger.type = 'button';
+    hamburger.setAttribute('aria-label', 'Open navigation');
+    hamburger.setAttribute('aria-expanded', 'false');
+    hamburger.className = 'mobile-menu-button';
+    hamburger.innerHTML = '<i data-lucide="menu" id="hamburgerIcon" class="w-5 h-5"></i>';
+    hamburger.addEventListener('click', toggleMobileMenu);
+    headerContent.prepend(hamburger);
+    const mobileViewport = window.matchMedia('(max-width: 860px)');
+    const updateNavigationVisibility = () => {
+        hamburger.hidden = !mobileViewport.matches;
+        if (mobileViewport.matches) desktopNav.style.setProperty('display', 'none', 'important');
+        else desktopNav.style.removeProperty('display');
+    };
+    updateNavigationVisibility();
+    mobileViewport.addEventListener('change', updateNavigationVisibility);
+
+    const pages = [
+        ['chart', 'index.html', 'candlestick-chart', '5m Scalp & Lot Desk'],
+        ['guardrail', 'guardrail.html', 'shield-check', 'Risk Guardrail'],
+        ['matrix', 'matrix.html', 'cpu', '5m Strategy Matrix'],
+        ['events', 'events.html', 'calendar', 'Events Desk'],
+        ['journal', 'journal.html', 'book-open', 'ZAR Trade Journal'],
+        ['insights', 'insights.html', 'bar-chart-3', 'Trade Insights'],
+        ['sadesk', 'sadesk.html', 'globe', 'Exness SA Desk']
+    ];
+    const backdrop = document.createElement('div');
+    backdrop.id = 'mobileDrawerBackdrop';
+    backdrop.className = 'mobile-drawer-backdrop';
+    backdrop.addEventListener('click', closeMobileMenu);
+
+    const drawer = document.createElement('aside');
+    drawer.id = 'mobileDrawer';
+    drawer.className = 'mobile-drawer';
+    drawer.setAttribute('aria-label', 'Terminal navigation');
+    drawer.setAttribute('aria-hidden', 'true');
+    drawer.innerHTML = `
+        <div>
+            <div class="mobile-drawer-heading">
+                <a href="index.html" class="mobile-drawer-brand"><span>TP</span><span>TRADE PRO<small>POWERED BY KIDDOWGEE</small></span></a>
+                <button type="button" class="mobile-drawer-close" aria-label="Close navigation"><i data-lucide="x" class="w-5 h-5"></i></button>
+            </div>
+            <p class="mobile-drawer-label">TERMINAL DESKS</p>
+            <nav aria-label="Mobile terminal desks">${pages.map(([id, href, icon, label]) => `
+                <a href="${href}" class="mobile-drawer-link${id === pageId ? ' nav-tab-active' : ''}"${id === pageId ? ' aria-current="page"' : ''}>
+                    <i data-lucide="${icon}" class="w-4 h-4"></i><span>${label}</span>
+                </a>`).join('')}
+                <a href="signin.html" id="mobileSignOut" class="mobile-drawer-link text-rose-300"><i data-lucide="log-out" class="w-4 h-4"></i><span>Sign out</span></a>
+            </nav>
+        </div>
+        <div class="mobile-drawer-footer"><span>Broker <b>Exness (1:1000)</b></span><span>Currency <b>ZAR (Rands)</b></span><span>Mode <b>High-Frequency 5m Scalp</b></span></div>`;
+    drawer.querySelector('.mobile-drawer-close').addEventListener('click', closeMobileMenu);
+    drawer.querySelector('#mobileSignOut').addEventListener('click', signOutDemoSession);
+
+    document.body.append(backdrop, drawer);
+    document.addEventListener('keydown', (event) => {
+        if (event.key === 'Escape') closeMobileMenu();
+    });
+}
+
+function ensureOpenTradePanel() {
+    if (document.getElementById('openTradePanel')) return;
+    const panel = document.createElement('aside');
+    panel.id = 'openTradePanel';
+    panel.className = 'fixed right-5 bottom-5 z-[65] w-[320px] rounded-2xl border border-[#1a2436] bg-[#0a0f18]/90 shadow-2xl hidden cursor-grab select-none';
+    panel.innerHTML = `
+        <div class="draggable-handle flex items-center justify-between border-b border-[#1a2436] px-4 py-3" style="touch-action:none">
+            <b class="font-mono text-xs font-extrabold uppercase text-white">Open Trade</b>
+            <button onclick="toggleOpenTradePanel('minimize')" aria-label="Minimize open trade panel" class="rounded-lg border border-[#1a2436] bg-[#0f1624] p-1.5 text-slate-300"><i data-lucide="minus" class="h-3.5 w-3.5"></i></button>
+        </div>
+        <div id="openTradePanelBody" class="space-y-3 p-4 font-mono text-xs">
+            <div class="flex justify-between"><span>Pair</span><b id="openTradeAsset">—</b></div>
+            <div class="flex justify-between"><span>Direction</span><b id="openTradeDirection">—</b></div>
+            <div class="flex justify-between"><span>Lot size</span><b id="openTradeLots">—</b></div>
+            <div class="flex justify-between"><span>Entry</span><b id="openTradeEntry">—</b></div>
+            <div class="flex justify-between"><span>Stop loss</span><b id="openTradeStop">—</b></div>
+            <div class="flex justify-between"><span>Take profit</span><b id="openTradeTP">—</b></div>
+            <div class="flex justify-between"><span>Live price</span><b id="openTradeLivePrice">—</b></div>
+            <div class="flex justify-between"><span>Live P/L</span><b id="openTradeLivePnl">—</b></div>
+        </div>`;
+
+    const minimized = document.createElement('button');
+    minimized.id = 'openTradePanelMinimized';
+    minimized.type = 'button';
+    minimized.className = 'fixed right-5 bottom-5 z-[66] hidden rounded-xl border border-[#1a2436] bg-[#0a0f18]/90 px-3 py-2 text-xs font-mono font-extrabold uppercase text-white shadow-xl';
+    minimized.innerHTML = '<span>Open Trade</span> <span id="openTradeMinimizedPnl" class="hidden rounded-md px-1.5 py-0.5 text-[11px]"></span>';
+    minimized.addEventListener('click', () => toggleOpenTradePanel('restore'));
+    document.body.append(panel, minimized);
+    makeTradePanelDraggable();
+}
+
 window.onload = function() {
     const pageId = document.body.dataset.page;
     if (pageId && !hasDemoSession()) {
@@ -1294,6 +1446,8 @@ window.onload = function() {
         return;
     }
 
+    ensureMobileNavigation(pageId);
+    ensureOpenTradePanel();
     const pageNav = document.querySelector('header nav');
     if (pageId && pageNav && !document.getElementById('demoSignOut')) {
         const signOutLink = document.createElement('a');
@@ -1309,11 +1463,31 @@ window.onload = function() {
     startLiveClock();
     if (document.getElementById('page-chart')) {
         const savedRisk = readStoredValue('tradeProPlan', null);
+        const savedChart = readStoredValue('tradeProChartState', null);
         if (savedRisk) tradePlanState = { ...tradePlanState, ...savedRisk };
+        if (savedChart) {
+            currentChartAsset = assetSpecs[savedChart.asset] ? savedChart.asset : 'XAUUSD';
+            currentChartTF = ['1', '5', '15', '60'].includes(savedChart.timeframe) ? savedChart.timeframe : '5';
+            manualCustomLot = Number(savedChart.manualLot) || manualCustomLot;
+        }
         const riskOutput = document.getElementById('guardOutPerTradeLoss');
         if (riskOutput) riskOutput.textContent = formatZar(tradePlanState.perTradeLoss);
-        initTradingViewChart('OANDA:XAUUSD', '5');
-        autoAlignPricesToChart();
+        initTradingViewChart(assetSpecs[currentChartAsset].tvSymbol, currentChartTF);
+        if (savedChart) {
+            switchChartAsset(currentChartAsset);
+            const entry = document.getElementById('calcPriceEntry');
+            const stop = document.getElementById('calcPriceStop');
+            const target = document.getElementById('calcPriceTarget');
+            if (entry && savedChart.entry) entry.value = savedChart.entry;
+            if (stop && savedChart.stop) stop.value = savedChart.stop;
+            if (target && savedChart.target) target.value = savedChart.target;
+            setTradeDirection(savedChart.direction === 'SELL' ? 'SELL' : 'BUY');
+            setLotSizeMode(savedChart.lotMode === 'MANUAL' ? 'MANUAL' : 'AUTO');
+            switchChartTF(currentChartTF);
+            recalculateZarLots();
+        } else {
+            autoAlignPricesToChart();
+        }
         updateTradeStatusBadge();
         updateOpenTradePanel();
         makeTradePanelDraggable();
@@ -1333,4 +1507,6 @@ window.onload = function() {
     if (document.getElementById('page-events')) renderEventsDesk();
     if (document.getElementById('page-journal')) renderJournalTable();
     if (document.getElementById('page-insights')) renderTradeInsightsPage();
+    updateOpenTradePanel();
+    if (activeOpenTrade?.status === 'OPEN') startTradeTracking();
 };
