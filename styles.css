@@ -1,0 +1,421 @@
+:root {
+    color-scheme: dark;
+    --apple-bg: #0a0f14;
+    --apple-bg-2: #141d28;
+    --apple-surface: rgba(19, 25, 32, 0.66);
+    --apple-surface-strong: rgba(25, 31, 40, 0.82);
+    --apple-surface-soft: rgba(12, 17, 24, 0.6);
+    --apple-border: rgba(201, 214, 228, 0.12);
+    --apple-border-strong: rgba(201, 214, 228, 0.18);
+    --apple-text: #eef5ff;
+    --apple-text-soft: #b1bfd0;
+    --apple-text-faint: #8698ab;
+    --apple-blue: #9eb7d6;
+    --apple-blue-soft: rgba(158, 183, 214, 0.14);
+    --apple-amber: #d3b38b;
+    --apple-amber-soft: rgba(211, 179, 139, 0.12);
+    --apple-green: #9aaea4;
+    --apple-green-soft: rgba(154, 174, 164, 0.14);
+    --apple-red: #c58c7d;
+    --apple-red-soft: rgba(197, 140, 125, 0.12);
+    --apple-shadow: 0 26px 80px rgba(0, 0, 0, 0.42);
+    --apple-shadow-soft: 0 14px 32px rgba(0, 0, 0, 0.22);
+    --apple-glass: rgba(255, 255, 255, 0.04);
+    --apple-glass-strong: rgba(255, 255, 255, 0.08);
+}
+
+* {
+    box-sizing: border-box;
+}
+
+html {
+    background: var(--apple-bg);
+    scroll-behavior: smooth;
+}
+
+body {
+    background:
+        radial-gradient(circle at 12% 16%, rgba(188, 205, 226, 0.12), transparent 22%),
+        radial-gradient(circle at 84% 18%, rgba(169, 180, 196, 0.08), transparent 20%),
+        linear-gradient(180deg, #091118 0%, #0d141b 42%, #0f1a22 100%);
+    color: var(--apple-text);
+    font-family: "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+    letter-spacing: -0.02em;
+    background-attachment: fixed;
+}
+
+body,
+button,
+input,
+select,
+textarea {
+    font-family: "SF Pro Display", "SF Pro Text", "Inter", "Segoe UI", sans-serif;
+}
+
+h1, h2, h3, h4, h5, h6,
+.font-mono {
+    letter-spacing: -0.025em;
+}
+
+.custom-scrollbar::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+.custom-scrollbar::-webkit-scrollbar-track {
+    background: rgba(6, 12, 18, 0.7);
+}
+.custom-scrollbar::-webkit-scrollbar-thumb {
+    background: rgba(142, 167, 197, 0.32);
+    border-radius: 999px;
+}
+.custom-scrollbar::-webkit-scrollbar-thumb:hover {
+    background: rgba(10, 132, 255, 0.7);
+}
+
+header,
+footer,
+#mobileDrawer,
+#newsRadarBanner,
+.pro-panel,
+.pro-card,
+.bg-\[\#05080e\],
+.bg-\[\#0f1624\],
+.bg-\[\#080c14\],
+.bg-\[\#0a0f18\],
+[class*="bg-[#05080e]"] {
+    backdrop-filter: blur(22px) saturate(130%);
+    -webkit-backdrop-filter: blur(22px) saturate(130%);
+    box-shadow: var(--apple-shadow-soft);
+}
+
+.pro-panel,
+.pro-card {
+    background: linear-gradient(180deg, rgba(21, 27, 35, 0.72) 0%, rgba(10, 15, 20, 0.78) 100%);
+    border: 1px solid var(--apple-border);
+    box-shadow: 0 18px 38px rgba(0, 0, 0, 0.18), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.pro-card {
+    background: linear-gradient(180deg, rgba(16, 22, 28, 0.72) 0%, rgba(10, 14, 20, 0.72) 100%);
+    border: 1px solid rgba(202, 213, 225, 0.1);
+}
+
+header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    background: linear-gradient(180deg, rgba(12, 17, 23, 0.7) 0%, rgba(12, 17, 23, 0.46) 100%) !important;
+    border-bottom: 1px solid rgba(197, 210, 224, 0.1);
+    backdrop-filter: blur(26px) saturate(135%);
+    -webkit-backdrop-filter: blur(26px) saturate(135%);
+    box-shadow: 0 12px 32px rgba(0, 0, 0, 0.12), inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+header > div {
+    position: relative;
+}
+
+header > div::before,
+#newsRadarBanner::before,
+.pro-panel::before,
+.pro-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    pointer-events: none;
+    background: linear-gradient(135deg, rgba(255,255,255,0.07), rgba(255,255,255,0.025) 22%, rgba(255,255,255,0.015) 100%);
+}
+
+header button,
+#newsRadarBanner button,
+.pro-panel button,
+.pro-card button {
+    position: relative;
+    z-index: 1;
+}
+
+header .max-w-\[1920px\] {
+    gap: 1rem;
+    padding-top: 0.4rem;
+    padding-bottom: 0.4rem;
+}
+
+header #hamburgerBtn {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+    background: linear-gradient(180deg, rgba(18, 25, 35, 0.9), rgba(12, 17, 25, 0.8));
+    border: 1px solid rgba(170, 192, 219, 0.15);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.06), 0 8px 24px rgba(6, 10, 18, 0.28);
+}
+
+header #hamburgerBtn:hover {
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 12px 26px rgba(10, 132, 255, 0.14);
+}
+
+header nav {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    padding: 0.25rem;
+    border-radius: 16px;
+    background: rgba(16, 21, 28, 0.54);
+    border: 1px solid rgba(197, 210, 224, 0.11);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 8px 18px rgba(0, 0, 0, 0.12);
+}
+
+header nav button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.55rem;
+    padding: 0.7rem 0.9rem;
+    border-radius: 10px;
+    border: 1px solid transparent;
+    background: transparent;
+    color: #c1cedc;
+    font-size: 0.72rem;
+    line-height: 1;
+    letter-spacing: 0.02em;
+    transition: all 0.18s ease;
+    backdrop-filter: blur(12px);
+}
+
+header nav button:hover {
+    background: rgba(255,255,255,0.025);
+    border-color: rgba(184, 197, 216, 0.1);
+    color: #eff7ff;
+}
+
+header .desktop-nav-active {
+    background: rgba(145, 161, 183, 0.12);
+    border: 1px solid rgba(168, 184, 206, 0.18);
+    color: #f2f7ff !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04), 0 10px 24px rgba(11, 18, 26, 0.22);
+}
+
+header .bg-\[\#0d131f\],
+header .bg-\[\#0f1624\] {
+    background: rgba(11, 18, 28, 0.72) !important;
+    border: 1px solid rgba(170, 192, 219, 0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.03);
+}
+
+header .bg-gradient-to-r.from-amber-500.to-amber-600 {
+    background: linear-gradient(180deg, rgba(192, 206, 220, 0.22) 0%, rgba(155, 168, 183, 0.18) 100%) !important;
+    color: #f2f7ff !important;
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 8px 18px rgba(0, 0, 0, 0.14);
+    border: 1px solid rgba(204, 216, 231, 0.18);
+}
+
+footer {
+    background: rgba(8, 12, 20, 0.82) !important;
+    border-top: 1px solid rgba(184, 197, 216, 0.12);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.02);
+}
+
+#mobileDrawer {
+    background: rgba(10, 15, 24, 0.88) !important;
+    border-right: 1px solid rgba(184, 197, 216, 0.12);
+    backdrop-filter: blur(24px) saturate(160%);
+    -webkit-backdrop-filter: blur(24px) saturate(160%);
+}
+
+#newsRadarBanner {
+    background: linear-gradient(90deg, rgba(255, 176, 32, 0.09), rgba(255, 176, 32, 0.06));
+    border-bottom: 1px solid rgba(255, 176, 32, 0.22);
+    backdrop-filter: blur(14px);
+}
+
+#newsRadarBanner button {
+    border: 1px solid rgba(255, 176, 32, 0.3);
+    box-shadow: inset 0 1px 0 rgba(255,255,255,0.04);
+}
+
+main {
+    padding-top: 1.5rem;
+    padding-bottom: 1.5rem;
+}
+
+main > section {
+    filter: drop-shadow(0 14px 28px rgba(0, 0, 0, 0.08));
+}
+
+@media (max-width: 1180px) {
+    header nav button {
+        padding: 0.62rem 0.7rem;
+        font-size: 0.63rem;
+    }
+}
+
+@media (max-width: 860px) {
+    header nav {
+        display: none !important;
+    }
+
+    header .max-w-\[1920px\] {
+        padding-left: 0.9rem;
+        padding-right: 0.9rem;
+    }
+}
+
+@media (max-width: 767px) {
+    header {
+        padding-top: 0.15rem;
+    }
+
+    header .max-w-\[1920px\] {
+        min-height: 64px;
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    header .flex.items-center.space-x-3 {
+        gap: 0.5rem;
+    }
+
+    #hamburgerBtn {
+        width: 38px;
+        height: 38px;
+    }
+
+    header .mr-1,
+    header .sm\:flex,
+    header .hidden.sm\:flex {
+        display: none !important;
+    }
+
+    header .text-base.sm\:text-lg {
+        font-size: 0.9rem;
+    }
+
+    header .bg-gradient-to-r.from-amber-500.to-amber-600 {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+        font-size: 0.63rem;
+    }
+
+    main {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+
+    .pro-panel,
+    .pro-card {
+        border-radius: 1rem;
+    }
+}
+
+.nav-tab-active {
+    background: rgba(146, 162, 182, 0.12);
+    color: #edf5ff !important;
+    border-left: 3px solid rgba(168, 184, 206, 0.9);
+    box-shadow: inset 0 0 0 1px rgba(168, 184, 206, 0.1);
+}
+
+.desktop-nav-active {
+    background: rgba(145, 161, 183, 0.12);
+    color: #f2f7ff !important;
+    border-bottom: 2px solid rgba(168, 184, 206, 0.9);
+    box-shadow: inset 0 0 0 1px rgba(168, 184, 206, 0.1);
+}
+
+.modal-backdrop {
+    background: rgba(4, 7, 13, 0.72);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+}
+
+button,
+input {
+    transition: all 0.2s ease;
+}
+
+button:hover {
+    transform: translateY(-1px);
+}
+
+button:active {
+    transform: translateY(0);
+}
+
+input[type=number]::-webkit-inner-spin-button,
+input[type=number]::-webkit-outer-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+}
+
+input[type=number] {
+    -moz-appearance: textfield;
+}
+
+input,
+textarea,
+select {
+    background: rgba(7, 12, 18, 0.9) !important;
+    border: 1px solid rgba(160, 177, 199, 0.14) !important;
+    color: var(--apple-text) !important;
+    box-shadow: inset 0 1px 1px rgba(255, 255, 255, 0.03);
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+    border-color: rgba(10, 132, 255, 0.65) !important;
+    box-shadow: 0 0 0 4px rgba(10, 132, 255, 0.12);
+    outline: none;
+}
+
+main {
+    padding-top: 1.25rem;
+}
+
+section {
+    position: relative;
+}
+
+section::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 1.75rem;
+    pointer-events: none;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
+}
+
+#tradingview_widget {
+    border-radius: 1.25rem;
+    overflow: hidden;
+    border: 1px solid rgba(160, 177, 199, 0.1);
+    background: rgba(8, 10, 15, 0.8);
+}
+
+#signalModal > div {
+    box-shadow: 0 36px 120px rgba(0, 0, 0, 0.52);
+    border: 1px solid rgba(255, 176, 32, 0.24);
+}
+
+button[id^="btn-asset"],
+button[id^="matBtn"],
+button[id^="modalTab"],
+button[id^="tf-"],
+button[id^="evtFilter"],
+button[id^="lotMode"],
+button[id^="btnDir"] {
+    border-radius: 12px;
+    letter-spacing: 0.02em;
+}
+
+button[id^="btn-asset"],
+button[id^="matBtn"],
+button[id^="modalTab"] {
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+button[class*="bg-emerald"],
+button[class*="bg-rose"],
+button[class*="bg-blue"] {
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.18);
+}
