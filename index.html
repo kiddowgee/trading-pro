@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="color-scheme" content="dark">
+    <meta name="theme-color" content="#04070d">
+    <title>Trade Pro | 5m Scalp & Lot Desk</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <script src="https://s3.tradingview.com/tv.js"></script>
+    <link rel="stylesheet" href="styles/chart.css">
+</head>
+<body class="min-h-screen flex flex-col custom-scrollbar">
+    <div id="tradeAlertContainer" class="fixed top-5 right-5 z-[70] flex flex-col items-end gap-2 pointer-events-none"></div>
+    <aside id="openTradePanel" class="fixed right-5 bottom-5 z-[65] w-[320px] rounded-2xl border border-[#1a2436] bg-[#0a0f18]/90 shadow-2xl hidden cursor-grab select-none">
+        <div class="draggable-handle flex items-center justify-between border-b border-[#1a2436] px-4 py-3" style="touch-action:none"><b class="font-mono text-xs text-white">OPEN TRADE</b><button onclick="toggleOpenTradePanel('minimize')" aria-label="Minimize open trade panel">−</button></div>
+        <div id="openTradePanelBody" class="space-y-3 p-4 font-mono text-xs"><div>Pair <b id="openTradeAsset">—</b></div><div>Direction <b id="openTradeDirection">—</b></div><div>Lot size <b id="openTradeLots">—</b></div><div>Entry <b id="openTradeEntry">—</b></div><div>Stop loss <b id="openTradeStop">—</b></div><div>Take profit <b id="openTradeTP">—</b></div><div>Live price <b id="openTradeLivePrice">—</b></div><div>Live P/L <b id="openTradeLivePnl">—</b></div></div>
+    </aside>
+    <button id="openTradePanelMinimized" onclick="toggleOpenTradePanel('restore')" class="fixed right-5 bottom-5 z-[66] hidden rounded-xl border border-[#1a2436] bg-[#0a0f18]/90 px-3 py-2 text-xs font-mono text-white">Open Trade <span id="openTradeMinimizedPnl" class="hidden"></span></button>
+    <header class="bg-[#080c14] border-b border-[#1a2436] sticky top-0 z-40">
+        <div class="max-w-[1920px] mx-auto px-4 sm:px-6 min-h-16 flex flex-wrap items-center justify-between gap-3 py-2">
+            <a href="index.html" class="flex items-center gap-3 text-white font-mono font-black"><span class="w-9 h-9 rounded-xl bg-blue-700 flex items-center justify-center">TP</span><span>TRADE PRO <small class="text-amber-400">5M SCALP</small></span></a>
+            <nav class="flex flex-wrap gap-1 text-xs font-mono" aria-label="Terminal desks">
+                <a class="desktop-nav-active px-3 py-2 rounded-lg" href="index.html">Scalp & Lot</a><a class="px-3 py-2 rounded-lg" href="guardrail.html">Risk Guardrail</a><a class="px-3 py-2 rounded-lg" href="matrix.html">Strategy Matrix</a><a class="px-3 py-2 rounded-lg" href="events.html">Events</a><a class="px-3 py-2 rounded-lg" href="journal.html">Journal</a><a class="px-3 py-2 rounded-lg" href="insights.html">Insights</a><a class="px-3 py-2 rounded-lg" href="sadesk.html">Exness SA</a>
+            </nav>
+            <div class="flex items-center gap-3 font-mono text-xs"><span class="text-slate-400">SAST <b id="liveTimeClock" class="text-amber-400">--:--:--</b></span><button onclick="triggerSignalPopup()" class="px-3 py-2 rounded-lg bg-amber-500 text-slate-950 font-bold">5M SIGNAL</button></div>
+        </div>
+    </header>
+    <div id="newsRadarBanner" class="px-4 py-2 text-xs font-mono text-amber-300">5M SCALP RADAR: Fast scalping mode active, signals update from 9/21 EMA and 5m order blocks. <a class="underline" href="events.html">View economic events</a></div>
+    <main class="flex-1 max-w-[1920px] w-full mx-auto px-4 sm:px-6 py-5">
+        <section id="page-chart" class="space-y-4">
+            <div class="pro-panel p-3 rounded-xl flex flex-wrap items-center justify-between gap-3">
+                <div class="flex flex-wrap items-center gap-2 font-mono text-xs"><b class="text-slate-400">ASSET</b><button id="btn-asset-XAUUSD" onclick="switchChartAsset('XAUUSD')" class="px-3 py-1.5 rounded-lg bg-amber-500/20 text-amber-300">XAUUSD</button><button id="btn-asset-EURUSD" onclick="switchChartAsset('EURUSD')" class="px-3 py-1.5 rounded-lg">EURUSD</button><button id="btn-asset-US100" onclick="switchChartAsset('US100')" class="px-3 py-1.5 rounded-lg">NAS100</button></div>
+                <div class="flex flex-wrap items-center gap-2 font-mono text-xs"><b class="text-slate-400">TIMEFRAME</b><button id="tf-1" onclick="switchChartTF('1')">1m</button><button id="tf-5" onclick="switchChartTF('5')">5m</button><button id="tf-15" onclick="switchChartTF('15')">15m</button><button id="tf-60" onclick="switchChartTF('60')">1h</button></div>
+                <div class="font-mono text-xs text-slate-400">Live Tick <b id="chartLiveTickPrice" class="text-emerald-400">2652.80</b> <span id="chartLiveTickDiff">+0.80</span></div>
+            </div>
+            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
+                <div class="lg:col-span-8 pro-panel rounded-2xl p-2 h-[420px] lg:h-[680px]"><div id="tradingview_widget" class="w-full h-full rounded-xl overflow-hidden"></div></div>
+                <div class="lg:col-span-4 pro-panel rounded-2xl p-5 space-y-4">
+                    <h2 class="font-mono font-extrabold text-white">5M SCALP LOT & MARGIN DESK</h2>
+                    <div class="grid grid-cols-2 gap-2"><button id="btnDirBuy" onclick="confirmTradeSetup('BUY')" class="py-2 rounded-xl bg-emerald-600 font-bold">BUY / LONG</button><button id="btnDirSell" onclick="confirmTradeSetup('SELL')" class="py-2 rounded-xl bg-rose-700 font-bold">SELL / SHORT</button></div>
+                    <div class="flex gap-2"><button id="lotModeAutoBtn" onclick="setLotSizeMode('AUTO')">AUTO</button><button id="lotModeManualBtn" onclick="setLotSizeMode('MANUAL')">MANUAL</button></div>
+                    <div id="lotPresetRow" class="flex flex-wrap gap-2"><button onclick="setPresetLot(0.01)">0.01</button><button onclick="setPresetLot(0.05)">0.05</button><button onclick="setPresetLot(0.10)">0.10</button><button onclick="setPresetLot(0.25)">0.25</button><button onclick="setPresetLot(0.50)">0.50</button><button onclick="setPresetLot(1)">1.00</button></div>
+                    <label class="block text-xs text-slate-400">Entry<input id="calcPriceEntry" type="number" step="any" value="2652.80" oninput="recalculateZarLots()" class="block w-full p-2 rounded-lg"></label>
+                    <label class="block text-xs text-slate-400">Stop loss<input id="calcPriceStop" type="number" step="any" value="2649.30" oninput="recalculateZarLots()" class="block w-full p-2 rounded-lg"></label>
+                    <label class="block text-xs text-slate-400">Take profit<input id="calcPriceTarget" type="number" step="any" value="2658.80" oninput="recalculateZarLots()" class="block w-full p-2 rounded-lg"></label>
+                    <button onclick="autoAlignPricesToChart()" class="w-full p-2 rounded-lg bg-[#0f1624] text-amber-300">Recalculate from 5m engine</button>
+                    <div id="tradePlanSummary" class="p-3 rounded-xl bg-[#05080e]"></div>
+                    <div class="space-y-2 rounded-xl bg-[#05080e] p-3 font-mono text-xs"><div>Position size: <b id="lotOutVal">0.28 Lots</b></div><div>SL distance: <b id="lotOutPipsSL">3.50 pips</b></div><div>TP distance: <b id="lotOutPipsTP">6.00 pips</b></div><div>Margin: <b id="lotOutMarginZar">R 1,373.45 ZAR</b></div><span id="guardOutPerTradeLoss" class="hidden">R 500.00</span><div>Status: <b id="tradeStatusBadge">NO OPEN TRADE</b> <button id="closeTradeBtn" onclick="closeOpenTrade()">CLOSE</button></div></div>
+                    <button onclick="logTradeFromCalculator()" class="w-full p-3 rounded-xl bg-emerald-700 font-bold">LOG TO TRADE JOURNAL</button>
+                </div>
+            </div>
+        </section>
+    </main>
+    <div id="signalModal" class="fixed inset-0 modal-backdrop z-50 hidden flex items-center justify-center p-4"><div class="pro-panel w-full max-w-xl rounded-2xl p-6 space-y-4"><div class="flex justify-between"><b id="popupAssetTag">XAUUSD</b><button onclick="closeSignalPopup()">Close</button></div><div id="popupMasterSignalBadge"><span id="popupMasterSignalText"></span></div><div id="popupConfluenceScore"></div><div class="grid grid-cols-2 gap-3"><span id="popupEntryPrice"></span><span id="popupStopPrice"></span><span id="popupTp1Price"></span><span id="popupTp2Price"></span></div><div class="flex gap-2"><button id="modalTabXAUUSD" onclick="switchModalSignalAsset('XAUUSD')">XAUUSD</button><button id="modalTabEURUSD" onclick="switchModalSignalAsset('EURUSD')">EURUSD</button><button id="modalTabUS100" onclick="switchModalSignalAsset('US100')">NAS100</button></div><div class="grid grid-cols-2 gap-2"><span id="popupModalIctText"></span><span id="modalSubSignalIct"></span><span id="popupModalEmaText"></span><span id="modalSubSignalEma"></span><span id="popupModalVolText"></span><span id="modalSubSignalVol"></span><span id="popupModalRsiText"></span><span id="modalSubSignalRsi"></span></div><button onclick="applySignalToOnChartCalc()">Apply signal to calculator</button></div></div>
+    <footer class="py-4 text-center text-xs text-slate-500">TRADE PRO &copy; 2026 | Powered by kiddowgee | Exness Charts</footer>
+    <script src="script.js"></script><script src="scripts/chart.js"></script>
+</body>
+</html>

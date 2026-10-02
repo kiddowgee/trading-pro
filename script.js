@@ -249,10 +249,29 @@ const upcomingEventsData = [
     { id: 5, title: 'ECB Monetary Policy Statement', time: '14:15 SAST', date: 'Thu 15 Oct 2026', impact: 'MEDIUM', currency: 'EUR', affected: 'EURUSD', hmr: 'Exness Standard Spread Alert', forecast: '3.25%', previous: '3.50%' }
 ];
 
-let sampleJournalLogs = [
+const defaultJournalLogs = [
     { id: 1, time: '17:42:10 SAST', asset: 'XAUUSD', type: 'BUY', lot: '0.28', entry: '2649.50', exit: '2655.80', pnl: 1764.00, risk: 'R 500.00', target: 'R 1250.00', balanceAfter: 'R 10900.00', note: 'Take profit hit' },
     { id: 2, time: '16:15:22 SAST', asset: 'EURUSD', type: 'SELL', lot: '0.80', entry: '1.0870', exit: '1.0852', pnl: 1332.00, risk: 'R 600.00', target: 'R 1500.00', balanceAfter: 'R 9600.00', note: 'Take profit hit' }
 ];
+
+function readStoredValue(key, fallback) {
+    try {
+        const value = localStorage.getItem(key);
+        return value ? JSON.parse(value) : fallback;
+    } catch {
+        return fallback;
+    }
+}
+
+function persistJournalLogs() {
+    try {
+        localStorage.setItem('tradeProJournal', JSON.stringify(sampleJournalLogs));
+    } catch {
+        showTradeAlert('Journal changes could not be saved in this browser.', 'info');
+    }
+}
+
+let sampleJournalLogs = readStoredValue('tradeProJournal', defaultJournalLogs);
 
 let tradePlanState = {
     accountEquity: 10000,
@@ -268,10 +287,10 @@ function formatZar(value) {
 }
 
 function getTradePlanState() {
-    const equity = parseFloat(document.getElementById('equityInput')?.value) || 10000;
-    const maxLoss = parseFloat(document.getElementById('maxLossInput')?.value) || 1000;
-    const targetProfit = parseFloat(document.getElementById('targetProfitInput')?.value) || 2500;
-    const plannedTrades = parseInt(document.getElementById('plannedTradesInput')?.value) || 1;
+    const equity = parseFloat(document.getElementById('equityInput')?.value) || tradePlanState.accountEquity;
+    const maxLoss = parseFloat(document.getElementById('maxLossInput')?.value) || tradePlanState.maxLoss;
+    const targetProfit = parseFloat(document.getElementById('targetProfitInput')?.value) || tradePlanState.targetProfit;
+    const plannedTrades = parseInt(document.getElementById('plannedTradesInput')?.value) || tradePlanState.plannedTrades;
 
     return {
         accountEquity: equity,
@@ -316,6 +335,11 @@ function renderTradePlanSummary() {
 
 function updateTradePlanState() {
     tradePlanState = getTradePlanState();
+    try {
+        localStorage.setItem('tradeProPlan', JSON.stringify(tradePlanState));
+    } catch {
+        // Keep the current-page plan usable if browser storage is unavailable.
+    }
     renderTradePlanSummary();
     return tradePlanState;
 }
@@ -379,6 +403,7 @@ function addJournalEntryFromTrade({ asset, direction, entry, exit, lotSize, pnl,
         note: reason || 'Closed trade'
     });
 
+    persistJournalLogs();
     renderJournalTable();
     renderTradeInsightsPage();
 }
@@ -414,32 +439,16 @@ function closeMobileMenu() {
 }
 
 function switchPage(pageId) {
-    ['chart', 'guardrail', 'matrix', 'events', 'journal', 'insights', 'sadesk'].forEach(p => {
-        const sec = document.getElementById(`page-${p}`);
-        const desktopBtn = document.getElementById(`nav-${p}`);
-        const drawerBtn = document.getElementById(`drawer-nav-${p}`);
-
-        if (sec) sec.classList.add('hidden');
-        if (desktopBtn) desktopBtn.classList.remove('desktop-nav-active');
-        if (drawerBtn) drawerBtn.classList.remove('nav-tab-active');
-    });
-
-    const activeSec = document.getElementById(`page-${pageId}`);
-    const activeDesktopBtn = document.getElementById(`nav-${pageId}`);
-    const activeDrawerBtn = document.getElementById(`drawer-nav-${pageId}`);
-
-    if (activeSec) activeSec.classList.remove('hidden');
-    if (activeDesktopBtn) activeDesktopBtn.classList.add('desktop-nav-active');
-    if (activeDrawerBtn) activeDrawerBtn.classList.add('nav-tab-active');
-
-    if (pageId === 'chart') initTradingViewChart(assetSpecs[currentChartAsset].tvSymbol, currentChartTF);
-    if (pageId === 'matrix') render15mMatrixUI(currentMatrixAsset);
-    if (pageId === 'events') renderEventsDesk();
-    if (pageId === 'journal') renderJournalTable();
-    if (pageId === 'insights') renderTradeInsightsPage();
-
-    closeMobileMenu();
-    lucide.createIcons();
+    const pages = {
+        chart: 'index.html',
+        guardrail: 'guardrail.html',
+        matrix: 'matrix.html',
+        events: 'events.html',
+        journal: 'journal.html',
+        insights: 'insights.html',
+        sadesk: 'sadesk.html'
+    };
+    if (pages[pageId]) window.location.href = pages[pageId];
 }
 
 function initTradingViewChart(symbol, interval) {
@@ -903,6 +912,11 @@ function recalculateZarLots() {
 
 function runGuardrailCheck() {
     tradePlanState = getTradePlanState();
+    try {
+        localStorage.setItem('tradeProPlan', JSON.stringify(tradePlanState));
+    } catch {
+        // Keep the current-page plan usable if browser storage is unavailable.
+    }
     renderTradePlanSummary();
 
     const equity = tradePlanState.accountEquity;
@@ -941,7 +955,7 @@ function runGuardrailCheck() {
         if (advDesc) advDesc.innerText = `Your total target profit (R ${targetProfit.toLocaleString()}) exceeds potential max loss (R ${maxLoss.toLocaleString()}). Allocating R ${perTradeLoss.toFixed(2)} per trade keeps risk controlled.`;
     }
 
-    recalculateZarLots();
+    if (document.getElementById('calcPriceEntry')) recalculateZarLots();
 }
 
 function syncGuardrailToChart() {
@@ -1164,6 +1178,7 @@ function logTradeFromCalculator() {
         note: 'Manual journal log'
     });
 
+    persistJournalLogs();
     renderJournalTable();
     renderTradeInsightsPage();
     switchPage('journal');
@@ -1231,6 +1246,7 @@ function exportJournalCSV() {
 
 function deleteJournalRow(id) {
     sampleJournalLogs = sampleJournalLogs.filter(r => r.id !== id);
+    persistJournalLogs();
     renderJournalTable();
 }
 
@@ -1254,14 +1270,67 @@ function startLiveClock() {
     }, 1000);
 }
 
+function hasDemoSession() {
+    try {
+        return sessionStorage.getItem('tradeProDemoSignedIn') === 'true';
+    } catch {
+        return false;
+    }
+}
+
+function signOutDemoSession() {
+    try {
+        sessionStorage.removeItem('tradeProDemoSignedIn');
+    } catch {
+        // Continue to the sign-in page if browser storage is unavailable.
+    }
+    window.location.replace('signin.html');
+}
+
 window.onload = function() {
-    lucide.createIcons();
+    const pageId = document.body.dataset.page;
+    if (pageId && !hasDemoSession()) {
+        window.location.replace('signin.html');
+        return;
+    }
+
+    const pageNav = document.querySelector('header nav');
+    if (pageId && pageNav && !document.getElementById('demoSignOut')) {
+        const signOutLink = document.createElement('a');
+        signOutLink.id = 'demoSignOut';
+        signOutLink.href = 'signin.html';
+        signOutLink.textContent = 'Sign out';
+        signOutLink.className = 'px-3 py-2 rounded-lg text-rose-300';
+        signOutLink.addEventListener('click', signOutDemoSession);
+        pageNav.appendChild(signOutLink);
+    }
+
+    if (typeof lucide !== 'undefined') lucide.createIcons();
     startLiveClock();
-    runGuardrailCheck();
-    renderTradeInsightsPage();
-    initTradingViewChart('OANDA:XAUUSD', '5');
-    autoAlignPricesToChart();
-    updateTradeStatusBadge();
-    updateOpenTradePanel();
-    makeTradePanelDraggable();
+    if (document.getElementById('page-chart')) {
+        const savedRisk = readStoredValue('tradeProPlan', null);
+        if (savedRisk) tradePlanState = { ...tradePlanState, ...savedRisk };
+        const riskOutput = document.getElementById('guardOutPerTradeLoss');
+        if (riskOutput) riskOutput.textContent = formatZar(tradePlanState.perTradeLoss);
+        initTradingViewChart('OANDA:XAUUSD', '5');
+        autoAlignPricesToChart();
+        updateTradeStatusBadge();
+        updateOpenTradePanel();
+        makeTradePanelDraggable();
+    }
+    if (document.getElementById('page-guardrail')) {
+        const savedRisk = readStoredValue('tradeProPlan', null);
+        if (savedRisk) {
+            tradePlanState = { ...tradePlanState, ...savedRisk };
+            document.getElementById('equityInput').value = tradePlanState.accountEquity;
+            document.getElementById('maxLossInput').value = tradePlanState.maxLoss;
+            document.getElementById('targetProfitInput').value = tradePlanState.targetProfit;
+            document.getElementById('plannedTradesInput').value = tradePlanState.plannedTrades;
+        }
+        runGuardrailCheck();
+    }
+    if (document.getElementById('page-matrix')) render15mMatrixUI(currentMatrixAsset);
+    if (document.getElementById('page-events')) renderEventsDesk();
+    if (document.getElementById('page-journal')) renderJournalTable();
+    if (document.getElementById('page-insights')) renderTradeInsightsPage();
 };

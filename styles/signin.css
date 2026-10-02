@@ -1,0 +1,162 @@
+:root {
+    color-scheme: dark;
+    font-family: "Manrope", sans-serif;
+    background: #0b1015;
+    color: #f2f5f6;
+    font-synthesis: none;
+    text-rendering: optimizeLegibility;
+}
+
+* { box-sizing: border-box; }
+
+body {
+    min-width: 320px;
+    min-height: 100vh;
+    margin: 0;
+    background:
+        linear-gradient(118deg, rgba(8, 13, 18, 0.96) 0%, rgba(10, 18, 21, 0.96) 54%, rgba(14, 24, 23, 0.98) 100%),
+        repeating-linear-gradient(0deg, transparent 0 51px, rgba(218, 231, 226, 0.045) 52px),
+        repeating-linear-gradient(90deg, transparent 0 51px, rgba(218, 231, 226, 0.035) 52px);
+}
+
+button, input { font: inherit; }
+
+.signin-shell {
+    display: grid;
+    grid-template-columns: minmax(360px, 0.88fr) minmax(440px, 1.12fr);
+    min-height: 100vh;
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: 36px;
+    gap: 28px;
+    align-items: stretch;
+}
+
+.signin-panel {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    width: min(100%, 430px);
+    margin: auto;
+    padding: 36px 12px;
+    animation: enter 500ms ease-out both;
+}
+
+.brand {
+    display: inline-flex;
+    width: fit-content;
+    align-items: center;
+    gap: 11px;
+    color: #f4f7f7;
+    text-decoration: none;
+    font-size: 15px;
+    font-weight: 800;
+}
+
+.brand-mark {
+    display: grid;
+    width: 42px;
+    aspect-ratio: 1;
+    place-items: center;
+    border: 1px solid rgba(226, 180, 106, 0.45);
+    background: linear-gradient(145deg, #dcaa5e, #9a6d32);
+    color: #101611;
+    font: 500 15px "DM Mono", monospace;
+}
+
+.brand-light { color: #d9b273; margin-left: 3px; }
+.eyebrow { margin: 0; color: #b9a477; font: 500 10px "DM Mono", monospace; letter-spacing: 0.12em; }
+.signin-panel > .eyebrow { margin-top: 58px; }
+h1 { margin: 12px 0 7px; font-size: 34px; line-height: 1.2; font-weight: 600; }
+.intro { margin: 0; color: #9ba9a7; font-size: 14px; }
+
+.signin-form { display: grid; gap: 10px; margin-top: 32px; }
+.signin-form label { color: #cad3d0; font-size: 12px; font-weight: 600; }
+.signin-form input {
+    width: 100%;
+    height: 48px;
+    margin-bottom: 9px;
+    padding: 0 14px;
+    border: 1px solid #303b3a;
+    border-radius: 4px;
+    outline: none;
+    background: rgba(10, 16, 19, 0.8);
+    color: #eef3f1;
+    font-size: 13px;
+}
+.signin-form input::placeholder { color: #697572; }
+.signin-form input:focus { border-color: #d5a85e; box-shadow: 0 0 0 3px rgba(213, 168, 94, 0.12); }
+.password-label { display: flex; align-items: center; justify-content: space-between; }
+.password-label a { color: #cbb27e; font-size: 11px; text-decoration: none; }
+.signin-form button {
+    display: flex;
+    height: 48px;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 8px;
+    padding: 0 15px;
+    border: 1px solid #d4a459;
+    border-radius: 4px;
+    background: #d4a459;
+    color: #181811;
+    font-size: 13px;
+    font-weight: 800;
+    cursor: pointer;
+    transition: background 160ms ease, transform 160ms ease;
+}
+.signin-form button:hover { transform: translateY(-1px); background: #e1b86e; }
+.signin-form button span { font-size: 18px; }
+.form-message { min-height: 16px; margin: 0; color: #efaa9b; font-size: 11px; }
+.demo-note { max-width: 390px; margin: 16px 0 0; color: #84918e; font-size: 11px; line-height: 1.65; }
+.market-status { display: flex; align-items: center; gap: 8px; margin-top: 38px; color: #8f9b98; font: 400 10px "DM Mono", monospace; }
+.status-dot { width: 7px; aspect-ratio: 1; border-radius: 50%; background: #7cad8e; box-shadow: 0 0 12px rgba(124, 173, 142, 0.6); }
+.status-time { margin-left: auto; color: #c1a76e; }
+
+.market-panel {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    min-height: 680px;
+    overflow: hidden;
+    padding: 28px;
+    border: 1px solid rgba(212, 225, 218, 0.13);
+    background:
+        linear-gradient(180deg, rgba(11, 19, 20, 0.04) 0%, rgba(7, 13, 15, 0.88) 100%),
+        repeating-linear-gradient(0deg, transparent 0 67px, rgba(200, 220, 213, 0.055) 68px),
+        repeating-linear-gradient(90deg, transparent 0 67px, rgba(200, 220, 213, 0.055) 68px),
+        radial-gradient(ellipse at 63% 37%, rgba(126, 155, 135, 0.24), transparent 40%),
+        linear-gradient(135deg, #233a34, #111d1e 58%, #111617);
+    animation: enter 650ms 80ms ease-out both;
+}
+.market-panel::after { content: ""; position: absolute; top: 34%; left: 10%; width: 80%; height: 1px; background: linear-gradient(90deg, transparent, rgba(221, 179, 103, 0.75), transparent); transform: rotate(-13deg); }
+.market-topline, .ticker { display: flex; align-items: center; justify-content: space-between; color: #a8b6af; font: 400 9px "DM Mono", monospace; letter-spacing: 0.08em; }
+.market-topline span:last-child { color: #d4b46f; }
+.market-copy { position: relative; z-index: 1; max-width: 460px; margin-top: auto; margin-bottom: auto; }
+.market-copy h2 { margin: 15px 0; font-size: clamp(34px, 4vw, 56px); line-height: 1.12; font-weight: 600; }
+.market-copy > p:last-child { max-width: 340px; color: #aab8b2; font-size: 13px; line-height: 1.8; }
+.ticker { position: relative; z-index: 1; justify-content: flex-start; gap: clamp(18px, 4vw, 50px); padding-top: 20px; border-top: 1px solid rgba(221, 232, 225, 0.17); }
+.ticker div { display: grid; gap: 7px; }
+.ticker span { color: #97a49d; font-size: 8px; }
+.ticker strong { color: #ece8d9; font-size: 12px; font-weight: 500; }
+
+@keyframes enter { from { opacity: 0; transform: translateY(9px); } to { opacity: 1; transform: translateY(0); } }
+
+@media (max-width: 820px) {
+    .signin-shell { grid-template-columns: 1fr; padding: 12px 22px 22px; }
+    .signin-panel { width: min(100%, 460px); padding: 30px 0; }
+    .signin-panel > .eyebrow { margin-top: 38px; }
+    .market-panel { min-height: 270px; padding: 22px; }
+    .market-copy { margin: 30px 0; }
+    .market-copy h2 { font-size: 34px; }
+}
+
+@media (max-width: 430px) {
+    .signin-shell { padding-inline: 18px; }
+    .ticker { gap: 14px; }
+    .ticker span { font-size: 7px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
