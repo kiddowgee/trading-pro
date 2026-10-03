@@ -17,490 +17,182 @@ tailwind.config = {
             },
             fontFamily: {
                 sans: ['Inter', '-apple-system', 'sans-serif'],
-                mono: ['JetBrains Mono', 'Fira Code', 'Consolas', 'monospace']
+                mono: ['JetBrains Mono', 'monospace']
             }
         }
     }
 };
 
 let currentChartAsset = 'XAUUSD';
-let currentModalSignalAsset = 'XAUUSD';
-let currentMatrixAsset = 'XAUUSD';
-let currentChartTF = '5';
+let currentSignal15mAsset = 'XAUUSD';
+let currentSignal5mAsset = 'XAUUSD';
 let globalUsdZarRate = 18.50;
 let activeTradeDirection = 'BUY';
-let lotSizeMode = 'AUTO';
-let manualCustomLot = 0.10;
-let activeEventFilter = 'ALL';
-let mobileMenuOpen = false;
-let activeOpenTrade = readStoredValue('tradeProActiveTrade', null);
+let activeOpenTrade = null;
 let tradeTrackerInterval = null;
 
-function persistActiveOpenTrade() {
-    try {
-        if (activeOpenTrade) localStorage.setItem('tradeProActiveTrade', JSON.stringify(activeOpenTrade));
-        else localStorage.removeItem('tradeProActiveTrade');
-    } catch {
-        showTradeAlert('Open trade tracking could not be saved in this browser.', 'info');
-    }
-}
+// User Account & Broker Engine Inputs
+let userAccountBalance = 10000.00;
+let userRiskPercent = 2.0;          // Max % willing to lose per session
+let userTargetProfitPercent = 4.0;  // Target % profit per session
+let userTradesPerSession = 2;        // Split trades per session
+let userCustomLotSize = 0.10;       // Lot size preferred by user
 
-function persistChartState() {
-    if (!document.getElementById('page-chart')) return;
-    try {
-        localStorage.setItem('tradeProChartState', JSON.stringify({
-            asset: currentChartAsset,
-            timeframe: currentChartTF,
-            direction: activeTradeDirection,
-            lotMode: lotSizeMode,
-            manualLot: manualCustomLot,
-            entry: document.getElementById('calcPriceEntry')?.value,
-            stop: document.getElementById('calcPriceStop')?.value,
-            target: document.getElementById('calcPriceTarget')?.value
-        }));
-    } catch {
-        // Keep calculator values usable when browser storage is unavailable.
-    }
-}
+let pendingSignal = null;
+let activeSignalDrawing = null;
 
+// Exness & Vault Markets Broker Specifications
 const assetSpecs = {
     'XAUUSD': {
-        name: 'XAUUSD — GOLD SPOT',
+        name: 'XAUUSD — GOLD SPOT (Exness/Vault)',
         tvSymbol: 'OANDA:XAUUSD',
-        basePrice: 2652.80,
-        pipSize: 0.10,
-        mult: 100,
-        exnessLeverage: 1000,
-        atr5m: 2.50
+        basePrice: 4140.52,
+        contractSize: 100,        // 1 Lot = 100 Troy Oz
+        pipSize: 0.10,            // 1 Pip = $0.10
+        dec: 2,
+        minLot: 0.01
     },
     'EURUSD': {
-        name: 'EURUSD — EURO / US DOLLAR',
+        name: 'EURUSD — EURO / US DOLLAR (Exness/Vault)',
         tvSymbol: 'FX:EURUSD',
-        basePrice: 1.08520,
-        pipSize: 0.0001,
-        mult: 100000,
-        exnessLeverage: 1000,
-        atr5m: 0.0007
+        basePrice: 1.12481,
+        contractSize: 100000,     // 1 Lot = 100,000 Units
+        pipSize: 0.0001,          // 1 Pip = 0.0001
+        dec: 5,
+        minLot: 0.01
     },
     'US100': {
-        name: 'NAS100 — NASDAQ 100 INDEX (USTEC)',
+        name: 'NAS100 — NASDAQ 100 INDEX (Exness/Vault)',
         tvSymbol: 'CAPITALCOM:US100',
-        basePrice: 20150.0,
-        pipSize: 1.0,
-        mult: 1,
-        exnessLeverage: 400,
-        atr5m: 22.0
+        basePrice: 30789.20,
+        contractSize: 1,          // 1 Lot = $1 per index point
+        pipSize: 1.00,            // 1 Index Point = $1.00
+        dec: 2,
+        minLot: 0.01
     }
 };
 
-function generate5mCandles(assetKey, count = 40) {
-    const spec = assetSpecs[assetKey];
-    const candles = [];
-    let currentPrice = spec.basePrice;
-
-    for (let i = count; i >= 0; i--) {
-        const volatility = spec.atr5m * 0.5;
-        const open = currentPrice + (Math.sin(i * 0.8) * volatility);
-        const close = open + ((Math.random() - 0.47) * volatility * 1.2);
-        const high = Math.max(open, close) + (Math.random() * volatility * 0.4);
-        const low = Math.min(open, close) - (Math.random() * volatility * 0.4);
-        const volume = Math.floor(800 + Math.random() * 2500);
-
-        candles.push({ time: i, open, high, low, close, volume });
-        currentPrice = close;
-    }
-    return candles;
-}
-
-function runQuantAnalysis(assetKey) {
-    const candles = generate5mCandles(assetKey, 40);
-    const spec = assetSpecs[assetKey];
-    const closes = candles.map(c => c.close);
-    const volumes = candles.map(c => c.volume);
-    const lastCandle = candles[candles.length - 1];
-    const currentPrice = lastCandle.close;
-
-    function calcEMA(period, priceArray) {
-        const k = 2 / (period + 1);
-        let ema = priceArray[0];
-        for (let i = 1; i < priceArray.length; i++) {
-            ema = (priceArray[i] * k) + (ema * (1 - k));
-        }
-        return ema;
-    }
-
-    const ema9 = calcEMA(9, closes);
-    const ema21 = calcEMA(21, closes);
-    const emaDiff = ema9 - ema21;
-
-    let emaSignal = 'NEUTRAL';
-    let emaText = `EMA9 (${ema9.toFixed(2)}) ≈ EMA21 (${ema21.toFixed(2)})`;
-    if (emaDiff > (spec.pipSize * 1.2)) {
-        emaSignal = 'BUY';
-        emaText = `Bullish Momentum: Fast EMA9 (${ema9.toFixed(2)}) > EMA21 (${ema21.toFixed(2)})`;
-    } else if (emaDiff < -(spec.pipSize * 1.2)) {
-        emaSignal = 'SELL';
-        emaText = `Bearish Momentum: Fast EMA9 (${ema9.toFixed(2)}) < EMA21 (${ema21.toFixed(2)})`;
-    }
-
-    function calcRSI(period, priceArray) {
-        let gains = 0;
-        let losses = 0;
-        for (let i = priceArray.length - period; i < priceArray.length; i++) {
-            const diff = priceArray[i] - priceArray[i - 1];
-            if (diff >= 0) gains += diff;
-            else losses += Math.abs(diff);
-        }
-        const avgGain = gains / period;
-        const avgLoss = losses / period;
-        if (avgLoss === 0) return 100;
-        const rs = avgGain / avgLoss;
-        return 100 - (100 / (1 + rs));
-    }
-
-    const rsi = calcRSI(9, closes);
-    let rsiSignal = 'NEUTRAL';
-    let rsiText = `RSI(9) = ${rsi.toFixed(1)} (Mid-Range)`;
-    if (rsi < 35) {
-        rsiSignal = 'BUY';
-        rsiText = `RSI(9) = ${rsi.toFixed(1)} (Oversold / Fast Scalp Bounce)`;
-    } else if (rsi > 65) {
-        rsiSignal = 'SELL';
-        rsiText = `RSI(9) = ${rsi.toFixed(1)} (Overbought / Fast Rejection)`;
-    }
-
-    let ictSignal = 'NEUTRAL';
-    let ictText = 'No active 5m Fair Value Gap on recent candles.';
-    const c1 = candles[candles.length - 3];
-    const c2 = candles[candles.length - 2];
-    const c3 = candles[candles.length - 1];
-
-    if (c3.low > c1.high) {
-        ictSignal = 'BUY';
-        ictText = `5m Bullish FVG Gap (${c1.high.toFixed(2)} - ${c3.low.toFixed(2)}) + Micro OB`;
-    } else if (c3.high < c1.low) {
-        ictSignal = 'SELL';
-        ictText = `5m Bearish FVG Gap (${c3.high.toFixed(2)} - ${c1.low.toFixed(2)}) + Liquidity Sweep`;
-    } else if (currentPrice > ema9) {
-        ictSignal = 'BUY';
-        ictText = '5m Order Block retested with upward displacement.';
-    } else {
-        ictSignal = 'SELL';
-        ictText = '5m Premium Order Block rejected with selling volume.';
-    }
-
-    const avgVol = volumes.slice(-10).reduce((a, b) => a + b, 0) / 10;
-    const lastVol = volumes[volumes.length - 1];
-    const volRatio = (lastVol / avgVol) * 100;
-
-    let volSignal = 'NEUTRAL';
-    let volText = `Volume at ${volRatio.toFixed(0)}% of 10-bar average.`;
-    if (volRatio > 115 && currentPrice > ema9) {
-        volSignal = 'BUY';
-        volText = `Scalp Volume Spike (${volRatio.toFixed(0)}% avg) confirming buy move.`;
-    } else if (volRatio > 115 && currentPrice < ema9) {
-        volSignal = 'SELL';
-        volText = `Scalp Volume Spike (${volRatio.toFixed(0)}% avg) confirming sell move.`;
-    }
-
-    let buyVotes = 0;
-    let sellVotes = 0;
-    [emaSignal, rsiSignal, ictSignal, volSignal].forEach(s => {
-        if (s === 'BUY') buyVotes++;
-        if (s === 'SELL') sellVotes++;
-    });
-
-    let masterDirection = 'BUY';
-    let masterSignalText = 'NEUTRAL / WAIT';
-    let confidence = '50%';
-
-    if (buyVotes >= 3) {
-        masterDirection = 'BUY';
-        masterSignalText = `STRONG BUY (${buyVotes}/4 SCALP CONFLUENCE)`;
-        confidence = `${78 + (buyVotes * 5)}%`;
-    } else if (sellVotes >= 3) {
-        masterDirection = 'SELL';
-        masterSignalText = `STRONG SELL (${sellVotes}/4 SCALP CONFLUENCE)`;
-        confidence = `${78 + (sellVotes * 5)}%`;
-    } else if (buyVotes > sellVotes) {
-        masterDirection = 'BUY';
-        masterSignalText = `MODERATE BUY (${buyVotes}/4 SCALP CONFLUENCE)`;
-        confidence = '68%';
-    } else {
-        masterDirection = 'SELL';
-        masterSignalText = `MODERATE SELL (${sellVotes}/4 SCALP CONFLUENCE)`;
-        confidence = '65%';
-    }
-
-    const entryPrice = currentPrice;
-    let stopLoss = 0;
-    let tp1 = 0;
-    let tp2 = 0;
-
-    if (masterDirection === 'BUY') {
-        stopLoss = entryPrice - (spec.atr5m * 1.0);
-        tp1 = entryPrice + (spec.atr5m * 1.7);
-        tp2 = entryPrice + (spec.atr5m * 2.8);
-    } else {
-        stopLoss = entryPrice + (spec.atr5m * 1.0);
-        tp1 = entryPrice - (spec.atr5m * 1.7);
-        tp2 = entryPrice - (spec.atr5m * 2.8);
-    }
-
-    const dec = assetKey === 'EURUSD' ? 5 : 2;
-
-    return {
-        assetKey,
-        currentPrice: entryPrice.toFixed(dec),
-        entry: entryPrice.toFixed(dec),
-        sl: stopLoss.toFixed(dec),
-        tp1: tp1.toFixed(dec),
-        tp2: tp2.toFixed(dec),
-        masterDirection,
-        masterSignalText,
-        confidence,
-        subSignals: {
-            ict: { sig: ictSignal, text: ictText },
-            ema: { sig: emaSignal, text: emaText },
-            vol: { sig: volSignal, text: volText },
-            rsi: { sig: rsiSignal, text: rsiText }
-        }
-    };
-}
-
-const upcomingEventsData = [
-    { id: 1, title: 'US Non-Farm Payrolls (NFP)', time: '14:30 SAST', date: 'Fri 02 Oct 2026', impact: 'HIGH', currency: 'USD', affected: 'Gold, NAS100, EURUSD', hmr: 'Exness HMR Active: Gold 1:200 max', forecast: '185K', previous: '142K' },
-    { id: 2, title: 'US Consumer Price Index (CPI YoY)', time: '14:30 SAST', date: 'Fri 02 Oct 2026', impact: 'HIGH', currency: 'USD', affected: 'Gold, EURUSD', hmr: 'Exness HMR Active: FX 1:200 max', forecast: '2.5%', previous: '2.9%' },
-    { id: 3, title: 'FOMC Federal Funds Rate Decision', time: '20:00 SAST', date: 'Wed 07 Oct 2026', impact: 'HIGH', currency: 'USD', affected: 'All Markets', hmr: 'Exness HMR Active: All assets', forecast: '4.75%', previous: '5.00%' },
-    { id: 4, title: 'SARB Interest Rate Decision', time: '15:00 SAST', date: 'Thu 08 Oct 2026', impact: 'HIGH', currency: 'ZAR', affected: 'USDZAR Spot', hmr: 'Exness HMR: USDZAR 1:100', forecast: '8.00%', previous: '8.25%' },
-    { id: 5, title: 'ECB Monetary Policy Statement', time: '14:15 SAST', date: 'Thu 15 Oct 2026', impact: 'MEDIUM', currency: 'EUR', affected: 'EURUSD', hmr: 'Exness Standard Spread Alert', forecast: '3.25%', previous: '3.50%' }
-];
-
-const defaultJournalLogs = [
-    { id: 1, time: '17:42:10 SAST', asset: 'XAUUSD', type: 'BUY', lot: '0.28', entry: '2649.50', exit: '2655.80', pnl: 1764.00, risk: 'R 500.00', target: 'R 1250.00', balanceAfter: 'R 10900.00', note: 'Take profit hit' },
-    { id: 2, time: '16:15:22 SAST', asset: 'EURUSD', type: 'SELL', lot: '0.80', entry: '1.0870', exit: '1.0852', pnl: 1332.00, risk: 'R 600.00', target: 'R 1500.00', balanceAfter: 'R 9600.00', note: 'Take profit hit' }
-];
-
-function readStoredValue(key, fallback) {
-    try {
-        const value = localStorage.getItem(key);
-        return value ? JSON.parse(value) : fallback;
-    } catch {
-        return fallback;
-    }
-}
-
-function persistJournalLogs() {
-    try {
-        localStorage.setItem('tradeProJournal', JSON.stringify(sampleJournalLogs));
-    } catch {
-        showTradeAlert('Journal changes could not be saved in this browser.', 'info');
-    }
-}
-
-let sampleJournalLogs = readStoredValue('tradeProJournal', defaultJournalLogs);
-
-let tradePlanState = {
-    accountEquity: 10000,
-    maxLoss: 1000,
-    targetProfit: 2500,
-    plannedTrades: 2,
-    perTradeLoss: 500,
-    perTradeTarget: 1250
+let livePrices = {
+    'XAUUSD': 4140.52,
+    'EURUSD': 1.12481,
+    'US100': 30789.20
 };
+
+const liveEconomicEvents = [
+    { id: 1, title: 'US Non-Farm Payrolls (NFP)', time: '14:30 SAST', date: 'Fri 02 Oct 2026', impact: 'HIGH', currency: 'USD', forecast: '185K', previous: '142K' },
+    { id: 2, title: 'US Consumer Price Index (CPI YoY)', time: '14:30 SAST', date: 'Wed 07 Oct 2026', impact: 'HIGH', currency: 'USD', forecast: '2.5%', previous: '2.9%' },
+    { id: 3, title: 'FOMC Interest Rate Decision', time: '20:00 SAST', date: 'Wed 14 Oct 2026', impact: 'HIGH', currency: 'USD', forecast: '4.75%', previous: '5.00%' }
+];
+
+let sampleJournalLogs = [];
 
 function formatZar(value) {
-    return `R ${Number(value || 0).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+    return `R ${Number(value || 0).toLocaleString('en-ZA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
-function getTradePlanState() {
-    const equity = parseFloat(document.getElementById('equityInput')?.value) || tradePlanState.accountEquity;
-    const maxLoss = parseFloat(document.getElementById('maxLossInput')?.value) || tradePlanState.maxLoss;
-    const targetProfit = parseFloat(document.getElementById('targetProfitInput')?.value) || tradePlanState.targetProfit;
-    const plannedTrades = parseInt(document.getElementById('plannedTradesInput')?.value) || tradePlanState.plannedTrades;
-
-    return {
-        accountEquity: equity,
-        maxLoss,
-        targetProfit,
-        plannedTrades,
-        perTradeLoss: plannedTrades > 0 ? maxLoss / plannedTrades : maxLoss,
-        perTradeTarget: plannedTrades > 0 ? targetProfit / plannedTrades : targetProfit
-    };
-}
-
-function renderTradePlanSummary() {
-    const el = document.getElementById('tradePlanSummary');
-    if (!el) return;
-
-    const plan = tradePlanState;
-    el.innerHTML = `
-        <div class="flex items-center justify-between gap-2 border-b border-[#1a2436] pb-2">
-            <span class="text-[10px] uppercase text-slate-400 font-bold">Trade Plan</span>
-            <span class="text-[10px] uppercase text-blue-300 font-bold">${plan.plannedTrades} trades</span>
-        </div>
-        <div class="grid grid-cols-2 gap-2 text-[10px]">
-            <div class="rounded-lg bg-[#0f1624] px-2 py-1.5 border border-[#1a2436]">
-                <div class="text-slate-400">Risk</div>
-                <div class="text-rose-400 font-bold">${formatZar(plan.maxLoss)}</div>
-            </div>
-            <div class="rounded-lg bg-[#0f1624] px-2 py-1.5 border border-[#1a2436]">
-                <div class="text-slate-400">Target</div>
-                <div class="text-emerald-400 font-bold">${formatZar(plan.targetProfit)}</div>
-            </div>
-            <div class="rounded-lg bg-[#0f1624] px-2 py-1.5 border border-[#1a2436]">
-                <div class="text-slate-400">Per trade</div>
-                <div class="text-amber-400 font-bold">${formatZar(plan.perTradeLoss)}</div>
-            </div>
-            <div class="rounded-lg bg-[#0f1624] px-2 py-1.5 border border-[#1a2436]">
-                <div class="text-slate-400">Balance</div>
-                <div class="text-white font-bold">${formatZar(plan.accountEquity)}</div>
-            </div>
-        </div>
-    `;
-}
-
-function updateTradePlanState() {
-    tradePlanState = getTradePlanState();
-    try {
-        localStorage.setItem('tradeProPlan', JSON.stringify(tradePlanState));
-    } catch {
-        // Keep the current-page plan usable if browser storage is unavailable.
-    }
-    renderTradePlanSummary();
-    return tradePlanState;
-}
-
-function renderTradeInsightsPage() {
-    const totalTrades = sampleJournalLogs.filter(r => typeof r.pnl === 'number').length;
-    const totalPnl = sampleJournalLogs.reduce((acc, row) => acc + (Number(row.pnl) || 0), 0);
-    const wins = sampleJournalLogs.filter(r => Number(r.pnl) > 0).length;
-    const avgRisk = sampleJournalLogs.length ? sampleJournalLogs.reduce((acc, row) => acc + (Number(String(row.risk || '').replace(/[^0-9.]/g, '')) || 0), 0) / sampleJournalLogs.length : 0;
-
-    const totalEl = document.getElementById('insightsTotalTrades');
-    const pnlEl = document.getElementById('insightsNetPnl');
-    const winEl = document.getElementById('insightsWinRate');
-    const avgEl = document.getElementById('insightsAvgRisk');
-    const recentEl = document.getElementById('insightsRecentList');
-    const budgetEl = document.getElementById('insightsBudget');
-    const targetEl = document.getElementById('insightsTarget');
-    const remainingEl = document.getElementById('insightsRemaining');
-
-    if (totalEl) totalEl.innerText = String(totalTrades);
-    if (pnlEl) pnlEl.innerText = formatZar(totalPnl);
-    if (winEl) winEl.innerText = sampleJournalLogs.length ? `${Math.round((wins / sampleJournalLogs.length) * 100)}%` : '0%';
-    if (avgEl) avgEl.innerText = formatZar(avgRisk);
-    if (budgetEl) budgetEl.innerText = formatZar(tradePlanState.maxLoss);
-    if (targetEl) targetEl.innerText = formatZar(tradePlanState.targetProfit);
-    if (remainingEl) remainingEl.innerText = formatZar(tradePlanState.accountEquity + totalPnl);
-
-    if (recentEl) {
-        recentEl.innerHTML = sampleJournalLogs.slice(0, 5).map(row => `
-            <div class="flex items-center justify-between border-b border-[#1a2436] pb-2 last:border-0 last:pb-0">
-                <div>
-                    <div class="font-mono font-bold text-white">${row.asset} ${row.type}</div>
-                    <div class="text-[10px] text-slate-400">${row.time}</div>
-                </div>
-                <div class="text-right">
-                    <div class="font-mono font-bold ${Number(row.pnl) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatZar(row.pnl)}</div>
-                    <div class="text-[10px] text-slate-400">${row.note || 'Closed'}</div>
-                </div>
-            </div>
-        `).join('');
-    }
-}
-
-function addJournalEntryFromTrade({ asset, direction, entry, exit, lotSize, pnl, reason, plan }) {
+function isMarketOpen() {
     const now = new Date();
-    const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} SAST`;
-
-    const balanceAfter = (plan?.accountEquity || tradePlanState.accountEquity) + pnl;
-    sampleJournalLogs.unshift({
-        id: Date.now(),
-        time: timeStr,
-        asset,
-        type: direction,
-        lot: Number(lotSize).toFixed(2),
-        entry: String(entry),
-        exit: String(exit),
-        pnl: Number(pnl.toFixed(2)),
-        risk: formatZar(plan?.perTradeLoss || tradePlanState.perTradeLoss),
-        target: formatZar(plan?.perTradeTarget || tradePlanState.perTradeTarget),
-        balanceAfter: formatZar(balanceAfter),
-        note: reason || 'Closed trade'
-    });
-
-    persistJournalLogs();
-    renderJournalTable();
-    renderTradeInsightsPage();
+    const day = now.getUTCDay();
+    const hour = now.getUTCHours();
+    if (day === 6) return false;
+    if (day === 5 && hour >= 21) return false;
+    if (day === 0 && hour < 21) return false;
+    return true;
 }
 
-function toggleMobileMenu() {
-    mobileMenuOpen = !mobileMenuOpen;
-    const drawer = document.getElementById('mobileDrawer');
-    const backdrop = document.getElementById('mobileDrawerBackdrop');
-    const icon = document.getElementById('hamburgerIcon');
-    const hamburger = document.getElementById('hamburgerBtn');
+function updateMarketStatusIndicator() {
+    const badge = document.getElementById('marketStatusBadge');
+    if (!badge) return;
+    const open = isMarketOpen();
+    badge.innerText = open ? 'MARKETS LIVE' : 'MARKETS CLOSED (WEEKEND)';
+    badge.className = open 
+        ? 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
+        : 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30';
+}
 
-    if (mobileMenuOpen) {
-        if (drawer) {
-            drawer.classList.add('is-open');
-            drawer.setAttribute('aria-hidden', 'false');
-        }
-        if (backdrop) backdrop.classList.add('is-open');
-        if (icon) icon.setAttribute('data-lucide', 'x');
-        if (hamburger) hamburger.setAttribute('aria-expanded', 'true');
-    } else {
-        if (drawer) {
-            drawer.classList.remove('is-open');
-            drawer.setAttribute('aria-hidden', 'true');
-        }
-        if (backdrop) backdrop.classList.remove('is-open');
-        if (icon) icon.setAttribute('data-lucide', 'menu');
-        if (hamburger) hamburger.setAttribute('aria-expanded', 'false');
+// Master Account Capital & Risk Parameter Listener
+function updateAccountCapitalAndRisk() {
+    const balInput = parseFloat(document.getElementById('userBalanceInput')?.value);
+    const riskInput = parseFloat(document.getElementById('userRiskPercentInput')?.value);
+    const targetInput = parseFloat(document.getElementById('userTargetProfitInput')?.value);
+    const tradesInput = parseInt(document.getElementById('userTradesPerSessionInput')?.value);
+    const lotInput = parseFloat(document.getElementById('userLotSizeInput')?.value);
+
+    if (!isNaN(balInput) && balInput > 0) userAccountBalance = balInput;
+    if (!isNaN(riskInput) && riskInput > 0) userRiskPercent = riskInput;
+    if (!isNaN(targetInput) && targetInput > 0) userTargetProfitPercent = targetInput;
+    if (!isNaN(tradesInput) && tradesInput > 0) userTradesPerSession = tradesInput;
+    if (!isNaN(lotInput) && lotInput >= 0.01) userCustomLotSize = lotInput;
+
+    const headerDisplay = document.getElementById('displayUserBalance');
+    if (headerDisplay) headerDisplay.innerText = formatZar(userAccountBalance);
+
+    calculateBrokerRecommendations();
+    render15mSignalPage();
+    render5mSignalPage();
+}
+
+// Exness & Vault Markets Position & SL/TP Recommender Engine
+function calculateBrokerRecommendations() {
+    const spec = assetSpecs[currentChartAsset];
+    const currentPrice = livePrices[currentChartAsset];
+
+    // Capital & Risk Breakdown
+    const totalSessionRiskZar = userAccountBalance * (userRiskPercent / 100);
+    const totalSessionTargetZar = userAccountBalance * (userTargetProfitPercent / 100);
+
+    const singleTradeRiskZar = totalSessionRiskZar / userTradesPerSession;
+    const singleTradeTargetZar = totalSessionTargetZar / userTradesPerSession;
+
+    const singleTradeRiskUsd = singleTradeRiskZar / globalUsdZarRate;
+    const singleTradeTargetUsd = singleTradeTargetZar / globalUsdZarRate;
+
+    // Recommendation Mode: User Lot vs Capital Derived Lot
+    let lotToUse = userCustomLotSize;
+    
+    // Compute required Price Distance (in Asset Price Units) based on Lot Size & Contract Multiplier
+    // Profit/Loss USD = Price Delta * Lot Size * Contract Size
+    const priceDeltaForLoss = singleTradeRiskUsd / (lotToUse * spec.contractSize);
+    const priceDeltaForProfit = singleTradeTargetUsd / (lotToUse * spec.contractSize);
+
+    const recommendedEntry = currentPrice;
+    const recommendedSL = activeTradeDirection === 'BUY' ? (currentPrice - priceDeltaForLoss) : (currentPrice + priceDeltaForLoss);
+    const recommendedTP = activeTradeDirection === 'BUY' ? (currentPrice + priceDeltaForProfit) : (currentPrice - priceDeltaForProfit);
+
+    // Populate Calculator Inputs
+    const entryEl = document.getElementById('calcPriceEntry');
+    const slEl = document.getElementById('calcPriceStop');
+    const tpEl = document.getElementById('calcPriceTarget');
+
+    if (entryEl) entryEl.value = recommendedEntry.toFixed(spec.dec);
+    if (slEl) slEl.value = recommendedSL.toFixed(spec.dec);
+    if (tpEl) tpEl.value = recommendedTP.toFixed(spec.dec);
+
+    // Render Calculations in UI Panel
+    document.getElementById('lotOutVal').innerText = `${lotToUse.toFixed(2)} Lots`;
+    document.getElementById('outPossibleLoss').innerText = `-${formatZar(singleTradeRiskZar)}`;
+    document.getElementById('outPossibleProfit').innerText = `+${formatZar(singleTradeTargetZar)}`;
+    document.getElementById('outRemBalLoss').innerText = formatZar(userAccountBalance - singleTradeRiskZar);
+    document.getElementById('outRemBalWin').innerText = formatZar(userAccountBalance + singleTradeTargetZar);
+
+    // Display Session Risk Metrics
+    const sessionRiskTag = document.getElementById('sessionRiskBreakdownTag');
+    if (sessionRiskTag) {
+        sessionRiskTag.innerText = `Session Risk (${userTradesPerSession} Trades): ${formatZar(totalSessionRiskZar)} | Target: ${formatZar(totalSessionTargetZar)}`;
     }
-    if (typeof lucide !== 'undefined') lucide.createIcons();
 }
 
-function closeMobileMenu() {
-    mobileMenuOpen = false;
-    const drawer = document.getElementById('mobileDrawer');
-    const backdrop = document.getElementById('mobileDrawerBackdrop');
-    const icon = document.getElementById('hamburgerIcon');
-    const hamburger = document.getElementById('hamburgerBtn');
-
-    if (drawer) {
-        drawer.classList.remove('is-open');
-        drawer.setAttribute('aria-hidden', 'true');
-    }
-    if (backdrop) backdrop.classList.remove('is-open');
-    if (icon) icon.setAttribute('data-lucide', 'menu');
-    if (hamburger) hamburger.setAttribute('aria-expanded', 'false');
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-}
-
-function switchPage(pageId) {
-    const pages = {
-        chart: 'index.html',
-        guardrail: 'guardrail.html',
-        matrix: 'matrix.html',
-        events: 'events.html',
-        journal: 'journal.html',
-        insights: 'insights.html',
-        sadesk: 'sadesk.html'
-    };
-    if (pages[pageId]) window.location.href = pages[pageId];
-}
-
-function initTradingViewChart(symbol, interval) {
+// Embed Official TradingView Widget
+function initTradingViewWidget(symbol) {
     const container = document.getElementById('tradingview_widget');
     if (!container) return;
     container.innerHTML = '';
+
     if (typeof TradingView !== 'undefined') {
         new TradingView.widget({
             "autosize": true,
             "symbol": symbol || "OANDA:XAUUSD",
-            "interval": interval || "5",
+            "interval": "5",
             "timezone": "Africa/Johannesburg",
             "theme": "dark",
             "style": "1",
@@ -509,14 +201,15 @@ function initTradingViewChart(symbol, interval) {
             "enable_publishing": false,
             "hide_side_toolbar": false,
             "allow_symbol_change": true,
-            "container_id": "tradingview_widget",
-            "studies": [
-                "RSI@tv-basicstudies",
-                "MACD@tv-basicstudies"
-            ]
+            "container_id": "tradingview_widget"
         });
     } else {
-        container.innerHTML = `<iframe src="https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${encodeURIComponent(symbol || 'OANDA:XAUUSD')}&interval=${interval || '5'}&symboledit=1&saveimage=1&toolbarbg=0a0f18&studies=RSI%40tv-basicstudies%2CMACD%40tv-basicstudies&theme=dark&style=1&timezone=Africa%2FJohannesburg" style="width:100%;height:100%;border:none;"></iframe>`;
+        const iframe = document.createElement('iframe');
+        iframe.src = `https://s.tradingview.com/widgetembed/?frameElementId=tradingview_widget&symbol=${encodeURIComponent(symbol)}&interval=5&theme=dark&style=1&timezone=Africa%2FJohannesburg`;
+        iframe.style.width = '100%';
+        iframe.style.height = '100%';
+        iframe.style.border = 'none';
+        container.appendChild(iframe);
     }
 }
 
@@ -527,112 +220,323 @@ function switchChartAsset(assetKey) {
         if (btn) {
             btn.className = a === assetKey
                 ? "px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40"
-                : "px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white bg-[#0f1624] border border-[#1a2436]";
+                : "px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 bg-[#0f1624] border border-[#1a2436]";
         }
     });
 
+    initTradingViewWidget(assetSpecs[assetKey].tvSymbol);
+    document.getElementById('livePriceQuoteDisplay').innerText = livePrices[assetKey].toFixed(assetSpecs[assetKey].dec);
+    calculateBrokerRecommendations();
+    render15mSignalPage();
+    render5mSignalPage();
+}
+
+// Technical Analysis Signals Integrated with Exness Risk Parameters
+function generateTechnicalAnalysis(assetKey, timeframe) {
     const spec = assetSpecs[assetKey];
-    initTradingViewChart(spec.tvSymbol, currentChartTF);
+    const price = livePrices[assetKey];
+    const is15m = timeframe === '15M';
 
-    const quant = runQuantAnalysis(assetKey);
-    document.getElementById('calcPriceEntry').value = quant.entry;
-    document.getElementById('calcPriceStop').value = quant.sl;
-    document.getElementById('calcPriceTarget').value = quant.tp1;
-    setTradeDirection(quant.masterDirection);
-    recalculateZarLots();
-    persistChartState();
+    const direction = 'BUY';
+    
+    // Compute SL & TP based on User's Capital & Risk Configuration
+    const totalSessionRiskZar = userAccountBalance * (userRiskPercent / 100);
+    const totalSessionTargetZar = userAccountBalance * (userTargetProfitPercent / 100);
+    const singleTradeRiskUsd = (totalSessionRiskZar / userTradesPerSession) / globalUsdZarRate;
+    const singleTradeTargetUsd = (totalSessionTargetZar / userTradesPerSession) / globalUsdZarRate;
+
+    const priceDeltaLoss = singleTradeRiskUsd / (userCustomLotSize * spec.contractSize);
+    const priceDeltaProfit = singleTradeTargetUsd / (userCustomLotSize * spec.contractSize);
+
+    const entry = price;
+    const sl = entry - priceDeltaLoss;
+    const tp = entry + priceDeltaProfit;
+
+    const biasText = is15m
+        ? `15m Macro Structure: Bullish MSS. Exness/Vault Lot (${userCustomLotSize} Lots) calculated to risk ${formatZar(totalSessionRiskZar / userTradesPerSession)} per trade.`
+        : `5m Micro Scalp: FVG Retest at ${entry.toFixed(spec.dec)}. Configured for ${userTradesPerSession} trade(s) per session.`;
+
+    return {
+        timeframe: is15m ? '15M Macro' : '5M Scalp',
+        assetKey,
+        direction,
+        entry: entry.toFixed(spec.dec),
+        sl: sl.toFixed(spec.dec),
+        tp: tp.toFixed(spec.dec),
+        biasText
+    };
 }
 
-function switchChartTF(tf) {
-    currentChartTF = tf;
-    ['1', '5', '15', '60'].forEach(t => {
-        const btn = document.getElementById(`tf-${t}`);
-        if (btn) {
-            btn.className = t === tf
-                ? (t === '5' ? "px-2.5 py-1 rounded text-xs font-mono bg-amber-500 text-slate-950 border border-amber-400 font-extrabold" : "px-2.5 py-1 rounded text-xs font-mono bg-blue-600 text-white border border-blue-500 font-bold")
-                : "px-2.5 py-1 rounded text-xs font-mono bg-[#0f1624] text-slate-400 border border-[#1a2436] hover:text-white";
-        }
-    });
-    initTradingViewChart(assetSpecs[currentChartAsset].tvSymbol, tf);
-    persistChartState();
+function render15mSignalPage() {
+    const sig = generateTechnicalAnalysis(currentSignal15mAsset, '15M');
+    const container = document.getElementById('signal15mCard');
+    if (!container) return;
+
+    container.innerHTML = `
+        <div class="space-y-4">
+            <div class="flex justify-between items-center border-b border-[#1a2436] pb-3">
+                <div>
+                    <span class="text-sm font-mono font-bold text-amber-400">15-MINUTE MACRO RADAR</span>
+                    <span class="text-xs font-mono text-slate-400 block">${assetSpecs[currentSignal15mAsset].name}</span>
+                </div>
+                <span class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">${sig.direction} BIAS</span>
+            </div>
+
+            <p class="text-xs font-mono text-slate-300 leading-relaxed">${sig.biasText}</p>
+
+            <div class="grid grid-cols-3 gap-2 bg-[#0f1624] p-3 rounded-xl border border-[#1a2436] text-xs font-mono">
+                <div>
+                    <div class="text-slate-400">Rec. Entry</div>
+                    <div class="text-white font-bold">${sig.entry}</div>
+                </div>
+                <div>
+                    <div class="text-slate-400">Rec. Stop Loss</div>
+                    <div class="text-rose-400 font-bold">${sig.sl}</div>
+                </div>
+                <div>
+                    <div class="text-slate-400">Rec. Take Profit</div>
+                    <div class="text-emerald-400 font-bold">${sig.tp}</div>
+                </div>
+            </div>
+
+            <button onclick="copySignalToCalculator('${sig.assetKey}', '${sig.timeframe}', '${sig.direction}', ${sig.entry}, ${sig.sl}, ${sig.tp})" class="w-full py-2.5 rounded-xl font-mono text-xs font-extrabold bg-amber-500 text-slate-950 hover:bg-amber-400">COPY 15M SIGNAL TO CALCULATOR DESK</button>
+        </div>
+    `;
 }
 
-function setTradeDirection(dir) {
-    activeTradeDirection = dir;
-    const btnBuy = document.getElementById('btnDirBuy');
-    const btnSell = document.getElementById('btnDirSell');
+function render5mSignalPage() {
+    const sig = generateTechnicalAnalysis(currentSignal5mAsset, '5M');
+    const container = document.getElementById('signal5mCard');
+    if (!container) return;
 
-    if (dir === 'BUY') {
-        btnBuy.className = "py-2 rounded-xl font-mono text-xs font-extrabold bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20 transition flex items-center justify-center space-x-1.5";
-        btnSell.className = "py-2 rounded-xl font-mono text-xs font-bold bg-[#0f1624] text-slate-400 border border-[#1a2436] hover:text-white transition flex items-center justify-center space-x-1.5";
-    } else {
-        btnSell.className = "py-2 rounded-xl font-mono text-xs font-extrabold bg-rose-500 text-white shadow-lg shadow-rose-500/20 transition flex items-center justify-center space-x-1.5";
-        btnBuy.className = "py-2 rounded-xl font-mono text-xs font-bold bg-[#0f1624] text-slate-400 border border-[#1a2436] hover:text-white transition flex items-center justify-center space-x-1.5";
+    container.innerHTML = `
+        <div class="space-y-4">
+            <div class="flex justify-between items-center border-b border-[#1a2436] pb-3">
+                <div>
+                    <span class="text-sm font-mono font-bold text-emerald-400">5-MINUTE MICRO SCALP RADAR</span>
+                    <span class="text-xs font-mono text-slate-400 block">${assetSpecs[currentSignal5mAsset].name}</span>
+                </div>
+                <span class="px-2.5 py-1 rounded-lg text-xs font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">${sig.direction} SCALP</span>
+            </div>
+
+            <p class="text-xs font-mono text-slate-300 leading-relaxed">${sig.biasText}</p>
+
+            <div class="grid grid-cols-3 gap-2 bg-[#0f1624] p-3 rounded-xl border border-[#1a2436] text-xs font-mono">
+                <div>
+                    <div class="text-slate-400">Rec. Entry</div>
+                    <div class="text-white font-bold">${sig.entry}</div>
+                </div>
+                <div>
+                    <div class="text-slate-400">Rec. Stop Loss</div>
+                    <div class="text-rose-400 font-bold">${sig.sl}</div>
+                </div>
+                <div>
+                    <div class="text-slate-400">Rec. Take Profit</div>
+                    <div class="text-emerald-400 font-bold">${sig.tp}</div>
+                </div>
+            </div>
+
+            <button onclick="copySignalToCalculator('${sig.assetKey}', '${sig.timeframe}', '${sig.direction}', ${sig.entry}, ${sig.sl}, ${sig.tp})" class="w-full py-2.5 rounded-xl font-mono text-xs font-extrabold bg-emerald-500 text-slate-950 hover:bg-emerald-400">COPY 5M SIGNAL TO CALCULATOR DESK</button>
+        </div>
+    `;
+}
+
+function switchSignal15mAsset(assetKey) {
+    currentSignal15mAsset = assetKey;
+    render15mSignalPage();
+}
+
+function switchSignal5mAsset(assetKey) {
+    currentSignal5mAsset = assetKey;
+    render5mSignalPage();
+}
+
+function copySignalToCalculator(assetKey, timeframe, direction, entry, sl, tp) {
+    if (currentChartAsset !== assetKey) {
+        switchChartAsset(assetKey);
     }
-    recalculateZarLots();
+
+    pendingSignal = { assetKey, timeframe, direction, entry, sl, tp };
+    activeTradeDirection = direction;
+
+    document.getElementById('calcPriceEntry').value = entry;
+    document.getElementById('calcPriceStop').value = sl;
+    document.getElementById('calcPriceTarget').value = tp;
+
+    const dirTag = document.getElementById('calcSignalDirectionTag');
+    if (dirTag) {
+        dirTag.innerText = `${direction} (${assetKey} ${timeframe})`;
+        dirTag.className = 'font-mono text-xs font-extrabold px-2 py-0.5 rounded bg-emerald-500/20 text-emerald-400 border border-emerald-500/40';
+    }
+
+    calculateBrokerRecommendations();
+    switchPage('chart');
+    showTradeAlert(`${assetKey} capital-optimized signal copied into calculator.`, 'info');
 }
 
-function parseLotText(lotText) {
-    const clean = (lotText || '').replace(/[^0-9.]/g, '');
-    return parseFloat(clean) || 0;
+function rejectAndWaitNextSignal() {
+    pendingSignal = null;
+    document.getElementById('calcPriceEntry').value = '';
+    document.getElementById('calcPriceStop').value = '';
+    document.getElementById('calcPriceTarget').value = '';
+    
+    const dirTag = document.getElementById('calcSignalDirectionTag');
+    if (dirTag) {
+        dirTag.innerText = 'NO SIGNAL LOADED';
+        dirTag.className = 'font-mono text-xs font-bold text-slate-400';
+    }
+
+    calculateBrokerRecommendations();
+    showTradeAlert('Signal rejected. Calculator desk reset.', 'info');
 }
 
-function toggleOpenTradePanel(mode) {
-    const panel = document.getElementById('openTradePanel');
-    const minimized = document.getElementById('openTradePanelMinimized');
+// Canvas Structure Drawing
+function renderChartStructureOverlay() {
+    const overlay = document.getElementById('chartOverlayCanvas');
+    if (!overlay) return;
+    const ctx = overlay.getContext('2d');
+    overlay.width = overlay.clientWidth;
+    overlay.height = overlay.clientHeight;
 
-    if (!panel || !minimized) return;
+    ctx.clearRect(0, 0, overlay.width, overlay.height);
 
-    if (mode === 'minimize') {
-        panel.classList.add('hidden');
-        minimized.classList.remove('hidden');
+    if (!activeSignalDrawing) return;
+
+    const { type, entry, sl, tp, direction } = activeSignalDrawing;
+    const w = overlay.width;
+    const h = overlay.height;
+
+    const entryY = h * 0.50;
+    const slY = direction === 'BUY' ? h * 0.72 : h * 0.28;
+    const tpY = direction === 'BUY' ? h * 0.22 : h * 0.78;
+
+    const boxTopY = Math.min(entryY, slY);
+    const boxHeight = Math.abs(entryY - slY);
+
+    ctx.fillStyle = direction === 'BUY' ? 'rgba(16, 185, 129, 0.15)' : 'rgba(244, 63, 94, 0.15)';
+    ctx.strokeStyle = direction === 'BUY' ? 'rgba(16, 185, 129, 0.6)' : 'rgba(244, 63, 94, 0.6)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+
+    ctx.fillRect(w * 0.15, boxTopY, w * 0.7, boxHeight);
+    ctx.strokeRect(w * 0.15, boxTopY, w * 0.7, boxHeight);
+
+    ctx.setLineDash([]);
+    ctx.font = 'bold 12px JetBrains Mono';
+    ctx.fillStyle = direction === 'BUY' ? '#10b981' : '#f43f5e';
+    ctx.fillText(`${type} EXNESS/VAULT ZONE`, w * 0.17, boxTopY + 18);
+
+    ctx.strokeStyle = '#3b82f6';
+    ctx.beginPath();
+    ctx.moveTo(w * 0.05, entryY);
+    ctx.lineTo(w * 0.95, entryY);
+    ctx.stroke();
+    ctx.fillStyle = '#3b82f6';
+    ctx.fillText(`ENTRY: ${entry.toFixed(assetSpecs[currentChartAsset].dec)}`, w * 0.70, entryY - 6);
+
+    ctx.strokeStyle = '#f43f5e';
+    ctx.beginPath();
+    ctx.moveTo(w * 0.05, slY);
+    ctx.lineTo(w * 0.95, slY);
+    ctx.stroke();
+    ctx.fillStyle = '#f43f5e';
+    ctx.fillText(`SL: ${sl.toFixed(assetSpecs[currentChartAsset].dec)}`, w * 0.70, slY - 6);
+
+    ctx.strokeStyle = '#10b981';
+    ctx.beginPath();
+    ctx.moveTo(w * 0.05, tpY);
+    ctx.lineTo(w * 0.95, tpY);
+    ctx.stroke();
+    ctx.fillStyle = '#10b981';
+    ctx.fillText(`TP: ${tp.toFixed(assetSpecs[currentChartAsset].dec)}`, w * 0.70, tpY - 6);
+}
+
+function confirmSignalAndOpenTrade() {
+    if (!pendingSignal) {
+        showTradeAlert('Please copy a signal from the 15m or 5m page first.', 'danger');
         return;
     }
 
-    panel.classList.remove('hidden');
-    minimized.classList.add('hidden');
+    const { direction, entry, sl, tp } = pendingSignal;
+    const lotSize = userCustomLotSize;
+
+    activeOpenTrade = {
+        asset: currentChartAsset,
+        direction,
+        entry: parseFloat(entry),
+        stopLoss: parseFloat(sl),
+        takeProfit: parseFloat(tp),
+        lotSize,
+        status: 'OPEN'
+    };
+
+    activeSignalDrawing = {
+        type: `${currentChartAsset} ${direction}`,
+        entry: parseFloat(entry),
+        sl: parseFloat(sl),
+        tp: parseFloat(tp),
+        direction
+    };
+
+    renderChartStructureOverlay();
+    updateTradeStatusBadge();
+    updateOpenTradePanel();
+    showTradeAlert(`Trade Active! Open position logged with broker contract specs.`, 'success');
+
+    if (tradeTrackerInterval) clearInterval(tradeTrackerInterval);
+
+    tradeTrackerInterval = setInterval(() => {
+        if (!activeOpenTrade || activeOpenTrade.status !== 'OPEN') return;
+
+        const currentLivePrice = livePrices[activeOpenTrade.asset];
+        updateOpenTradePanel();
+
+        if (isMarketOpen()) {
+            const tpHit = activeOpenTrade.direction === 'BUY' ? currentLivePrice >= activeOpenTrade.takeProfit : currentLivePrice <= activeOpenTrade.takeProfit;
+            const slHit = activeOpenTrade.direction === 'BUY' ? currentLivePrice <= activeOpenTrade.stopLoss : currentLivePrice >= activeOpenTrade.stopLoss;
+
+            if (tpHit) finalizeOpenTrade(activeOpenTrade.takeProfit, 'Take Profit Hit', 'success');
+            else if (slHit) finalizeOpenTrade(activeOpenTrade.stopLoss, 'Stop Loss Hit', 'danger');
+        }
+    }, 1000);
 }
 
-function makeTradePanelDraggable() {
-    const panel = document.getElementById('openTradePanel');
-    const handle = panel?.querySelector('.draggable-handle');
-    if (!panel || !handle) return;
+function finalizeOpenTrade(exitPrice, reason, alertType) {
+    if (!activeOpenTrade) return;
 
-    let isDragging = false;
-    let offsetX = 0;
-    let offsetY = 0;
+    const spec = assetSpecs[activeOpenTrade.asset];
+    const priceMove = activeOpenTrade.direction === 'BUY' ? exitPrice - activeOpenTrade.entry : activeOpenTrade.entry - exitPrice;
+    const pnlZar = (priceMove * activeOpenTrade.lotSize * spec.contractSize) * globalUsdZarRate;
 
-    handle.addEventListener('pointerdown', (event) => {
-        if (event.target.closest('button')) return;
+    userAccountBalance += pnlZar;
+    document.getElementById('userBalanceInput').value = userAccountBalance.toFixed(2);
+    
+    const headerDisplay = document.getElementById('displayUserBalance');
+    if (headerDisplay) headerDisplay.innerText = formatZar(userAccountBalance);
 
-        isDragging = true;
-        const rect = panel.getBoundingClientRect();
-        offsetX = event.clientX - rect.left;
-        offsetY = event.clientY - rect.top;
-        handle.setPointerCapture(event.pointerId);
+    sampleJournalLogs.unshift({
+        id: Date.now(),
+        time: new Date().toLocaleTimeString('en-GB') + ' SAST',
+        asset: activeOpenTrade.asset,
+        type: activeOpenTrade.direction,
+        lot: activeOpenTrade.lotSize.toFixed(2),
+        entry: activeOpenTrade.entry.toFixed(spec.dec),
+        exit: exitPrice.toFixed(spec.dec),
+        pnl: Number(pnlZar.toFixed(2)),
+        note: reason
     });
 
-    handle.addEventListener('pointermove', (event) => {
-        if (!isDragging) return;
+    activeSignalDrawing = null;
+    renderChartStructureOverlay();
 
-        const maxX = window.innerWidth - panel.offsetWidth - 12;
-        const maxY = window.innerHeight - panel.offsetHeight - 12;
-        const nextX = Math.min(Math.max(event.clientX - offsetX, 12), maxX);
-        const nextY = Math.min(Math.max(event.clientY - offsetY, 12), maxY);
+    showTradeAlert(`Trade Closed: ${reason} (${formatZar(pnlZar)}). Drawing removed.`, alertType);
+    activeOpenTrade = null;
+    if (tradeTrackerInterval) clearInterval(tradeTrackerInterval);
 
-        panel.style.left = `${nextX}px`;
-        panel.style.top = `${nextY}px`;
-        panel.style.right = 'auto';
-        panel.style.bottom = 'auto';
-    });
-
-    handle.addEventListener('pointerup', () => {
-        isDragging = false;
-    });
-
-    handle.addEventListener('pointerleave', () => {
-        isDragging = false;
-    });
+    updateTradeStatusBadge();
+    updateOpenTradePanel();
+    renderJournalTable();
+    rejectAndWaitNextSignal();
 }
 
 function updateOpenTradePanel() {
@@ -640,157 +544,27 @@ function updateOpenTradePanel() {
     if (!panel) return;
 
     if (!activeOpenTrade) {
-        updateMinimizedTradePnl();
         panel.classList.add('hidden');
-        document.getElementById('openTradePanelMinimized')?.classList.remove('hidden');
         return;
     }
 
-    const formula = runQuantAnalysis(activeOpenTrade.asset);
-    const livePriceText = document.getElementById('chartLiveTickPrice')?.innerText || formula.currentPrice;
-    const liveValue = Number.parseFloat(String(livePriceText).replace(/[^0-9.\-]/g, '')) || Number.parseFloat(String(formula.currentPrice).replace(/[^0-9.\-]/g, '')) || 0;
+    panel.classList.remove('hidden');
+    const spec = assetSpecs[activeOpenTrade.asset];
+    const currentPrice = livePrices[activeOpenTrade.asset];
+    const priceMove = activeOpenTrade.direction === 'BUY' ? currentPrice - activeOpenTrade.entry : activeOpenTrade.entry - currentPrice;
+    const pnlZar = (priceMove * activeOpenTrade.lotSize * spec.contractSize) * globalUsdZarRate;
 
     document.getElementById('openTradeAsset').innerText = activeOpenTrade.asset;
     document.getElementById('openTradeDirection').innerText = activeOpenTrade.direction;
-    document.getElementById('openTradeDirection').className = activeOpenTrade.direction === 'BUY'
-        ? 'font-mono text-sm font-extrabold text-emerald-400'
-        : 'font-mono text-sm font-extrabold text-rose-400';
-    document.getElementById('openTradeLots').innerText = `${activeOpenTrade.lotSize.toFixed(2)} Lots`;
-    document.getElementById('openTradeEntry').innerText = activeOpenTrade.entry.toFixed(activeOpenTrade.asset === 'EURUSD' ? 5 : 2);
-    document.getElementById('openTradeStop').innerText = activeOpenTrade.stopLoss.toFixed(activeOpenTrade.asset === 'EURUSD' ? 5 : 2);
-    document.getElementById('openTradeTP').innerText = activeOpenTrade.takeProfit.toFixed(activeOpenTrade.asset === 'EURUSD' ? 5 : 2);
-    document.getElementById('openTradeLivePrice').innerText = liveValue.toFixed(activeOpenTrade.asset === 'EURUSD' ? 5 : 2);
-    updateMinimizedTradePnl(liveValue);
-
-    if (panel.classList.contains('hidden')) {
-        panel.classList.remove('hidden');
-        document.getElementById('openTradePanelMinimized')?.classList.add('hidden');
-    }
-}
-
-function updateMinimizedTradePnl(livePrice) {
-    const pnlElement = document.getElementById('openTradeMinimizedPnl');
-    const panelPnlElement = document.getElementById('openTradeLivePnl');
-    if (!pnlElement && !panelPnlElement) return;
-
-    if (!activeOpenTrade || activeOpenTrade.status !== 'OPEN') {
-        pnlElement?.classList.add('hidden');
-        if (panelPnlElement) {
-            panelPnlElement.textContent = '—';
-            panelPnlElement.className = 'font-extrabold text-slate-300';
-        }
-        return;
-    }
-
-    const priceText = document.getElementById('chartLiveTickPrice')?.innerText || '';
-    const currentPrice = Number.isFinite(livePrice)
-        ? livePrice
-        : Number.parseFloat(String(priceText).replace(/,/g, '').replace(/[^0-9.-]/g, ''));
-    if (!Number.isFinite(currentPrice)) return;
-
-    const pnl = calculateTradePnl(activeOpenTrade, currentPrice);
-    const sign = pnl > 0 ? '+' : pnl < 0 ? '-' : '';
-    const formattedPnl = `${sign}${formatZar(Math.abs(pnl))}`;
-    const pnlTone = pnl > 0 ? 'text-emerald-300' : pnl < 0 ? 'text-rose-300' : 'text-slate-300';
-    if (pnlElement) {
-        pnlElement.textContent = formattedPnl;
-        pnlElement.className = pnl > 0
-        ? 'rounded-md bg-emerald-500/10 px-1.5 py-0.5 text-[11px] text-emerald-300'
-        : pnl < 0
-            ? 'rounded-md bg-rose-500/10 px-1.5 py-0.5 text-[11px] text-rose-300'
-            : 'rounded-md bg-white/5 px-1.5 py-0.5 text-[11px] text-slate-300';
-    }
-    if (panelPnlElement) {
-        panelPnlElement.textContent = formattedPnl;
-        panelPnlElement.className = `font-mono text-sm font-extrabold ${pnlTone}`;
-    }
+    document.getElementById('openTradeLivePnl').innerText = formatZar(pnlZar);
+    document.getElementById('openTradeLivePnl').className = `font-mono font-extrabold ${pnlZar >= 0 ? 'text-emerald-400' : 'text-rose-400'}`;
 }
 
 function updateTradeStatusBadge() {
     const badge = document.getElementById('tradeStatusBadge');
-    const closeBtn = document.getElementById('closeTradeBtn');
     if (!badge) return;
-
-    if (!activeOpenTrade) {
-        updateMinimizedTradePnl();
-        badge.innerText = 'NO OPEN TRADE';
-        badge.className = 'font-bold text-slate-400';
-        if (closeBtn) {
-            closeBtn.disabled = true;
-            closeBtn.classList.add('opacity-50', 'cursor-not-allowed');
-            closeBtn.classList.remove('hover:bg-rose-500/20');
-        }
-        document.getElementById('openTradePanelMinimized')?.classList.remove('hidden');
-        return;
-    }
-
-    const { direction, status, asset } = activeOpenTrade;
-    const label = status === 'OPEN' ? `${direction} ${asset} TRACKING` : `${direction} ${asset} CLOSED`;
-    badge.innerText = label;
-    badge.className = status === 'OPEN'
-        ? 'font-bold text-emerald-400'
-        : 'font-bold text-amber-400';
-
-    if (closeBtn) {
-        closeBtn.disabled = status !== 'OPEN';
-        closeBtn.classList.toggle('opacity-50', status !== 'OPEN');
-        closeBtn.classList.toggle('cursor-not-allowed', status !== 'OPEN');
-        if (status === 'OPEN') {
-            closeBtn.classList.add('hover:bg-rose-500/20');
-        } else {
-            closeBtn.classList.remove('hover:bg-rose-500/20');
-        }
-    }
-
-    const minim = document.getElementById('openTradePanelMinimized');
-    const panel = document.getElementById('openTradePanel');
-    if (panel && activeOpenTrade.status === 'OPEN') {
-        panel.classList.remove('hidden');
-        minim?.classList.add('hidden');
-    }
-}
-
-function closeOpenTrade() {
-    const livePriceEl = document.getElementById('chartLiveTickPrice');
-    const closePrice = livePriceEl
-        ? Number.parseFloat(livePriceEl.innerText.replace(/,/g, '').replace(/[^0-9.-]/g, ''))
-        : activeOpenTrade?.entry;
-    finalizeOpenTrade(closePrice, 'Manual close', 'info', activeOpenTrade ? `${activeOpenTrade.direction} ${activeOpenTrade.asset} closed manually.` : '');
-}
-
-function finalizeOpenTrade(exitPrice, reason, alertType, alertMessage) {
-    if (!activeOpenTrade || activeOpenTrade.status !== 'OPEN') return;
-
-    const trade = activeOpenTrade;
-    const finalPrice = Number.isFinite(exitPrice) ? exitPrice : trade.entry;
-    const pnl = calculateTradePnl(trade, finalPrice);
-    if (alertMessage) showTradeAlert(alertMessage, alertType);
-    addJournalEntryFromTrade({
-        asset: trade.asset,
-        direction: trade.direction,
-        entry: trade.entry,
-        exit: finalPrice,
-        lotSize: trade.lotSize,
-        pnl,
-        reason,
-        plan: trade.plan || {
-            accountEquity: tradePlanState.accountEquity,
-            perTradeLoss: tradePlanState.perTradeLoss,
-            perTradeTarget: tradePlanState.perTradeTarget
-        }
-    });
-
-    trade.status = 'CLOSED';
-    activeOpenTrade = null;
-    persistActiveOpenTrade();
-
-    if (tradeTrackerInterval) {
-        clearInterval(tradeTrackerInterval);
-        tradeTrackerInterval = null;
-    }
-
-    updateTradeStatusBadge();
-    updateOpenTradePanel();
+    badge.innerText = activeOpenTrade ? `TRACKING: ${activeOpenTrade.direction} ${activeOpenTrade.asset}` : 'NO OPEN DRAWING';
+    badge.className = activeOpenTrade ? 'text-emerald-400 font-bold font-mono text-xs' : 'text-slate-400 font-bold font-mono text-xs';
 }
 
 function showTradeAlert(message, type = 'info') {
@@ -798,715 +572,95 @@ function showTradeAlert(message, type = 'info') {
     if (!container) return;
 
     const alert = document.createElement('div');
-    const tone = type === 'success'
-        ? 'bg-emerald-500/15 border border-emerald-500/40 text-emerald-300'
-        : type === 'danger'
-            ? 'bg-rose-500/15 border border-rose-500/40 text-rose-300'
-            : 'bg-blue-500/15 border border-blue-500/40 text-blue-300';
+    const color = type === 'success' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' : type === 'danger' ? 'bg-rose-500/20 text-rose-300 border-rose-500/40' : 'bg-blue-500/20 text-blue-300 border-blue-500/40';
 
-    alert.className = `${tone} pointer-events-auto rounded-xl px-3 py-2 text-xs font-mono font-bold shadow-xl backdrop-blur-md`;
-    alert.innerHTML = `<div class="flex items-center gap-2"><span class="inline-flex h-2 w-2 rounded-full ${type === 'danger' ? 'bg-rose-400' : type === 'success' ? 'bg-emerald-400' : 'bg-blue-400'}"></span><span>${message}</span></div>`;
+    alert.className = `p-3 rounded-xl border text-xs font-mono font-bold shadow-xl backdrop-blur-md mb-2 ${color}`;
+    alert.innerText = message;
     container.appendChild(alert);
 
-    setTimeout(() => {
-        alert.remove();
-    }, 4000);
-}
-
-function confirmTradeSetup(direction) {
-    setTradeDirection(direction);
-    const plan = updateTradePlanState();
-
-    const entry = parseFloat(document.getElementById('calcPriceEntry').value) || 0;
-    const sl = parseFloat(document.getElementById('calcPriceStop').value) || 0;
-    const tp = parseFloat(document.getElementById('calcPriceTarget').value) || 0;
-    const lotSize = parseLotText(document.getElementById('lotOutVal').innerText);
-
-    if (!entry || !sl || !tp || lotSize <= 0) {
-        showTradeAlert('Enter valid entry, SL, TP and lot size before confirming the trade.', 'info');
-        return;
-    }
-
-    activeOpenTrade = {
-        asset: currentChartAsset,
-        direction,
-        entry,
-        stopLoss: sl,
-        takeProfit: tp,
-        lotSize,
-        status: 'OPEN',
-        openedAt: Date.now(),
-        plan: {
-            accountEquity: plan.accountEquity,
-            maxLoss: plan.maxLoss,
-            targetProfit: plan.targetProfit,
-            perTradeLoss: plan.perTradeLoss,
-            perTradeTarget: plan.perTradeTarget,
-            plannedTrades: plan.plannedTrades
-        }
-    };
-
-    persistActiveOpenTrade();
-    updateTradeStatusBadge();
-    updateOpenTradePanel();
-    showTradeAlert(`${direction} ${currentChartAsset} confirmed — ${lotSize.toFixed(2)} lots tracked. TP ${tp.toFixed(2)} / SL ${sl.toFixed(2)}`, 'success');
-
-    startTradeTracking();
-}
-
-function startTradeTracking() {
-    if (tradeTrackerInterval) {
-        clearInterval(tradeTrackerInterval);
-    }
-
-    tradeTrackerInterval = setInterval(() => {
-        if (!activeOpenTrade || activeOpenTrade.status !== 'OPEN') return;
-
-        const livePriceEl = document.getElementById('chartLiveTickPrice');
-        const currentLivePrice = livePriceEl
-            ? parseFloat(livePriceEl.innerText.replace(/,/g, '').replace(/[^0-9.]/g, ''))
-            : Number.parseFloat(runQuantAnalysis(activeOpenTrade.asset).currentPrice);
-
-        if (!Number.isFinite(currentLivePrice)) return;
-
-        const { direction: tradeDirection, stopLoss, takeProfit } = activeOpenTrade;
-        const livePanelPrice = document.getElementById('openTradeLivePrice');
-        if (livePanelPrice) livePanelPrice.textContent = currentLivePrice.toFixed(activeOpenTrade.asset === 'EURUSD' ? 5 : 2);
-        updateMinimizedTradePnl(currentLivePrice);
-        const tpHit = tradeDirection === 'BUY'
-            ? currentLivePrice >= takeProfit
-            : currentLivePrice <= takeProfit;
-
-        const slHit = tradeDirection === 'BUY'
-            ? currentLivePrice <= stopLoss
-            : currentLivePrice >= stopLoss;
-
-        if (tpHit) {
-            const priceText = currentLivePrice.toFixed(activeOpenTrade.asset === 'EURUSD' ? 5 : 2);
-            finalizeOpenTrade(currentLivePrice, 'Take profit hit', 'success', `${tradeDirection} ${activeOpenTrade.asset} TAKE PROFIT HIT at ${priceText}.`);
-            return;
-        }
-
-        if (slHit) {
-            const priceText = currentLivePrice.toFixed(activeOpenTrade.asset === 'EURUSD' ? 5 : 2);
-            finalizeOpenTrade(currentLivePrice, 'Stop loss hit', 'danger', `${tradeDirection} ${activeOpenTrade.asset} STOP LOSS HIT at ${priceText}.`);
-        }
-    }, 1500);
-}
-
-function setLotSizeMode(mode) {
-    lotSizeMode = mode;
-    const btnAuto = document.getElementById('lotModeAutoBtn');
-    const btnManual = document.getElementById('lotModeManualBtn');
-    const presetRow = document.getElementById('lotPresetRow');
-
-    if (mode === 'AUTO') {
-        btnAuto.className = "px-2.5 py-0.5 rounded text-[11px] font-mono font-bold bg-blue-600 text-white";
-        btnManual.className = "px-2.5 py-0.5 rounded text-[11px] font-mono font-bold text-slate-400 hover:text-slate-200";
-        presetRow.classList.add('opacity-50', 'pointer-events-none');
-    } else {
-        btnManual.className = "px-2.5 py-0.5 rounded text-[11px] font-mono font-bold bg-blue-600 text-white";
-        btnAuto.className = "px-2.5 py-0.5 rounded text-[11px] font-mono font-bold text-slate-400 hover:text-slate-200";
-        presetRow.classList.remove('opacity-50', 'pointer-events-none');
-    }
-    recalculateZarLots();
-}
-
-function setPresetLot(val) {
-    manualCustomLot = val;
-    recalculateZarLots();
-}
-
-function autoAlignPricesToChart() {
-    const quant = runQuantAnalysis(currentChartAsset);
-    document.getElementById('calcPriceEntry').value = quant.entry;
-    document.getElementById('calcPriceStop').value = quant.sl;
-    document.getElementById('calcPriceTarget').value = quant.tp1;
-    setTradeDirection(quant.masterDirection);
-    recalculateZarLots();
-}
-
-function recalculateZarLots() {
-    const entry = parseFloat(document.getElementById('calcPriceEntry').value) || 0;
-    const sl = parseFloat(document.getElementById('calcPriceStop').value) || 0;
-    const tp = parseFloat(document.getElementById('calcPriceTarget').value) || 0;
-
-    const spec = assetSpecs[currentChartAsset];
-    const pipsSL = Math.abs(entry - sl);
-    const pipsTP = Math.abs(tp - entry);
-
-    const perTradeLossZar = parseFloat(document.getElementById('guardOutPerTradeLoss').innerText.replace(/[^0-9.]/g, '')) || 500;
-
-    let pipValueZar = 0;
-    if (currentChartAsset === 'XAUUSD') pipValueZar = 10 * globalUsdZarRate * (pipsSL / 0.10);
-    else if (currentChartAsset === 'EURUSD') pipValueZar = 10 * globalUsdZarRate * (pipsSL / 0.0001);
-    else pipValueZar = 1 * globalUsdZarRate * pipsSL;
-
-    let calculatedLots = 0.10;
-
-    if (lotSizeMode === 'AUTO') {
-        calculatedLots = pipValueZar > 0 ? (perTradeLossZar / pipValueZar) : 0.10;
-        if (calculatedLots < 0.01) calculatedLots = 0.01;
-    } else {
-        calculatedLots = manualCustomLot;
-    }
-
-    const notionalUsd = (entry * spec.mult * calculatedLots);
-    const marginZar = (notionalUsd / spec.exnessLeverage) * globalUsdZarRate;
-
-    const lossZar = lotSizeMode === 'AUTO' ? perTradeLossZar : (calculatedLots * pipValueZar);
-    const profitZar = lossZar * (pipsSL > 0 ? (pipsTP / pipsSL) : 1.7);
-
-    document.getElementById('lotOutVal').innerText = `${calculatedLots.toFixed(2)} Lots`;
-    document.getElementById('lotOutPipsSL').innerText = `${pipsSL.toFixed(currentChartAsset === 'EURUSD' ? 4 : 1)} Pips (-R ${Math.round(lossZar).toLocaleString()})`;
-    document.getElementById('lotOutPipsTP').innerText = `${pipsTP.toFixed(currentChartAsset === 'EURUSD' ? 4 : 1)} Pips (+R ${Math.round(profitZar).toLocaleString()})`;
-    document.getElementById('lotOutMarginZar').innerText = `R ${marginZar.toFixed(2)} ZAR`;
-    persistChartState();
-}
-
-function runGuardrailCheck() {
-    tradePlanState = getTradePlanState();
-    try {
-        localStorage.setItem('tradeProPlan', JSON.stringify(tradePlanState));
-    } catch {
-        // Keep the current-page plan usable if browser storage is unavailable.
-    }
-    renderTradePlanSummary();
-
-    const equity = tradePlanState.accountEquity;
-    const maxLoss = tradePlanState.maxLoss;
-    const targetProfit = tradePlanState.targetProfit;
-    const trades = tradePlanState.plannedTrades;
-
-    const perTradeLoss = tradePlanState.perTradeLoss;
-    const perTradeProfit = tradePlanState.perTradeTarget;
-    const rr = perTradeLoss > 0 ? (perTradeProfit / perTradeLoss) : 0;
-    const expPct = (maxLoss / equity) * 100;
-
-    let score = Math.round((expPct * 3) + (rr < 1.5 ? 40 : 10) + (trades > 4 ? 20 : 5));
-    if (score > 100) score = 100;
-
-    document.getElementById('guardOutPerTradeLoss').innerText = `R ${perTradeLoss.toFixed(2)}`;
-    document.getElementById('guardOutPerTradeProfit').innerText = `R ${perTradeProfit.toFixed(2)}`;
-
-    const rrEl = document.getElementById('guardOutRR');
-    if (rrEl) rrEl.innerText = `1 : ${rr.toFixed(2)}`;
-
-    const scoreEl = document.getElementById('guardOutRiskScore');
-    if (scoreEl) {
-        scoreEl.innerText = `${score} / 100 (${score < 35 ? 'LOW' : (score < 65 ? 'MODERATE' : 'HIGH')})`;
-        scoreEl.className = score < 35 ? "text-xl font-mono font-extrabold text-emerald-400" : (score < 65 ? "text-xl font-mono font-extrabold text-amber-400" : "text-xl font-mono font-extrabold text-rose-400");
-    }
-
-    const advEl = document.getElementById('guardOutAdvisability');
-    const advDesc = document.getElementById('guardOutAdvisabilityDesc');
-
-    if (maxLoss >= targetProfit) {
-        if (advEl) advEl.innerText = "DO NOT EXECUTE — MAX LOSS EXCEEDS TARGET PROFIT";
-        if (advDesc) advDesc.innerText = "Risking more than your potential profit breaks scalping probability. Adjust target profit higher or lower max loss.";
-    } else {
-        if (advEl) advEl.innerText = "RECOMMENDED — SCALP REWARD / RISK VALID";
-        if (advDesc) advDesc.innerText = `Your total target profit (R ${targetProfit.toLocaleString()}) exceeds potential max loss (R ${maxLoss.toLocaleString()}). Allocating R ${perTradeLoss.toFixed(2)} per trade keeps risk controlled.`;
-    }
-
-    if (document.getElementById('calcPriceEntry')) recalculateZarLots();
-}
-
-function syncGuardrailToChart() {
-    updateTradePlanState();
-    runGuardrailCheck();
-    switchPage('chart');
-}
-
-function switchMatrixAsset(assetKey) {
-    currentMatrixAsset = assetKey;
-    ['XAUUSD', 'EURUSD', 'US100'].forEach(a => {
-        const btn = document.getElementById(`matBtn-${a}`);
-        if (btn) {
-            btn.className = a === assetKey
-                ? "px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40"
-                : "px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white bg-[#0f1624] border border-[#1a2436]";
-        }
-    });
-    render15mMatrixUI(assetKey);
-}
-
-function render15mMatrixUI(assetKey) {
-    const quant = runQuantAnalysis(assetKey);
-    const sub = quant.subSignals;
-
-    const updateMatCard = (sigKey, data) => {
-        const badge = document.getElementById(`matSig${sigKey}`);
-        const desc = document.getElementById(`matDesc${sigKey}`);
-        if (badge) {
-            badge.innerText = data.sig;
-            badge.className = data.sig === 'BUY'
-                ? 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                : (data.sig === 'SELL'
-                    ? 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                    : 'px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30');
-        }
-        if (desc) desc.innerText = data.text;
-    };
-
-    updateMatCard('Ict', sub.ict);
-    updateMatCard('Ema', sub.ema);
-    updateMatCard('Vol', sub.vol);
-    updateMatCard('Rsi', sub.rsi);
+    setTimeout(() => alert.remove(), 4000);
 }
 
 function renderEventsDesk() {
     const container = document.getElementById('eventsListContainer');
     if (!container) return;
-    container.innerHTML = '';
-
-    const filtered = upcomingEventsData.filter(e => {
-        if (activeEventFilter === 'ALL') return true;
-        return e.impact === activeEventFilter;
-    });
-
-    filtered.forEach(evt => {
-        const card = document.createElement('div');
-        card.className = "bg-[#05080e] p-4 rounded-xl border border-[#1a2436] space-y-3 relative flex flex-col justify-between";
-
-        const impactBadge = evt.impact === 'HIGH'
-            ? '<span class="bg-rose-500/20 text-rose-400 border border-rose-500/30 px-2 py-0.5 rounded text-[10px] font-bold">HIGH IMPACT</span>'
-            : '<span class="bg-amber-500/20 text-amber-400 border border-amber-500/30 px-2 py-0.5 rounded text-[10px] font-bold">MEDIUM IMPACT</span>';
-
-        card.innerHTML = `
-            <div class="space-y-2">
-                <div class="flex items-center justify-between gap-2">
-                    <div class="flex flex-col">
-                        <span class="text-[10px] font-mono uppercase tracking-[0.12em] text-slate-400">Date</span>
-                        <span class="text-xs font-mono font-extrabold text-white">${evt.date}</span>
-                    </div>
-                    ${impactBadge}
-                </div>
-
-                <div class="flex items-center justify-between gap-2 border-b border-[#1a2436] pb-2">
-                    <span class="text-xs font-mono font-extrabold text-amber-400">${evt.currency}</span>
-                    <span class="text-xs font-mono text-slate-300">${evt.time}</span>
-                </div>
-
-                <h4 class="font-mono font-extrabold text-sm text-slate-100 leading-snug">${evt.title}</h4>
-                <p class="text-xs text-slate-400 font-sans">Affects: <strong class="text-amber-400 font-mono">${evt.affected}</strong></p>
+    container.innerHTML = liveEconomicEvents.map(evt => `
+        <div class="bg-[#0f1624] p-4 rounded-xl border border-[#1a2436] space-y-2">
+            <div class="flex justify-between items-center">
+                <span class="text-xs font-mono font-bold text-amber-400">${evt.currency} — ${evt.date} (${evt.time})</span>
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">${evt.impact}</span>
             </div>
-
-            <div class="pt-2 border-t border-[#1a2436] space-y-1 font-mono text-[11px]">
-                <div class="flex justify-between text-slate-400 gap-2">
-                    <span>Forecast / Previous:</span>
-                    <span class="text-white font-bold">${evt.forecast} / ${evt.previous}</span>
-                </div>
-                <div class="bg-amber-500/10 border border-amber-500/20 p-2 rounded text-amber-300 text-[10px] leading-relaxed">
-                    <i data-lucide="alert-triangle" class="w-3 h-3 inline mr-1"></i>
-                    ${evt.hmr}
-                </div>
+            <h4 class="font-mono font-bold text-sm text-white">${evt.title}</h4>
+            <div class="flex justify-between text-xs font-mono text-slate-400 pt-1 border-t border-[#1a2436]">
+                <span>Forecast: <strong class="text-white">${evt.forecast}</strong></span>
+                <span>Previous: <strong class="text-white">${evt.previous}</strong></span>
             </div>
-        `;
-        container.appendChild(card);
-    });
-    lucide.createIcons();
-}
-
-function filterEvents(level) {
-    activeEventFilter = level;
-    ['ALL', 'HIGH', 'MEDIUM'].forEach(l => {
-        const btn = document.getElementById(`evtFilter${l}`);
-        if (btn) {
-            btn.className = l === level
-                ? "px-3 py-1 rounded-lg bg-blue-600 text-white font-bold"
-                : "px-3 py-1 rounded-lg bg-[#0f1624] border border-[#1a2436] text-slate-400 hover:text-white font-bold";
-        }
-    });
-    renderEventsDesk();
-}
-
-function triggerSignalPopup(assetKey) {
-    const modal = document.getElementById('signalModal');
-    currentModalSignalAsset = assetKey || currentChartAsset;
-    updateModalSignalAssetUI(currentModalSignalAsset);
-    if (modal) modal.classList.remove('hidden');
-}
-
-function closeSignalPopup() {
-    const modal = document.getElementById('signalModal');
-    if (modal) modal.classList.add('hidden');
-}
-
-function switchModalSignalAsset(assetKey) {
-    currentModalSignalAsset = assetKey;
-    updateModalSignalAssetUI(assetKey);
-}
-
-function updateModalSignalAssetUI(assetKey) {
-    const quant = runQuantAnalysis(assetKey);
-    const spec = assetSpecs[assetKey];
-    const sub = quant.subSignals;
-
-    ['XAUUSD', 'EURUSD', 'US100'].forEach(k => {
-        const btn = document.getElementById(`modalTab${k}`);
-        if (btn) {
-            btn.className = k === assetKey
-                ? "px-3 py-1 rounded text-xs font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40"
-                : "px-3 py-1 rounded text-xs font-mono font-bold text-slate-400 hover:text-slate-200";
-        }
-    });
-
-    document.getElementById('popupAssetTag').innerText = spec.name;
-    document.getElementById('popupMasterSignalText').innerText = quant.masterSignalText;
-
-    const badge = document.getElementById('popupMasterSignalBadge');
-    if (badge) {
-        badge.className = quant.masterDirection === 'BUY'
-            ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/40 px-3 py-1 rounded-lg text-xs font-mono font-extrabold flex items-center gap-1.5 shadow-md"
-            : "bg-rose-500/20 text-rose-400 border border-rose-500/40 px-3 py-1 rounded-lg text-xs font-mono font-extrabold flex items-center gap-1.5 shadow-md";
-    }
-
-    document.getElementById('popupConfluenceScore').innerText = `${quant.confidence} Confidence`;
-
-    document.getElementById('popupEntryPrice').innerText = quant.entry;
-    document.getElementById('popupStopPrice').innerText = quant.sl;
-    document.getElementById('popupTp1Price').innerText = quant.tp1;
-    document.getElementById('popupTp2Price').innerText = quant.tp2;
-
-    const formatSubModal = (key, data) => {
-        const sigBadge = document.getElementById(`modalSubSignal${key}`);
-        const textEl = document.getElementById(`popupModal${key}Text`);
-
-        if (textEl) textEl.innerText = data.text;
-        if (sigBadge) {
-            sigBadge.innerText = data.sig;
-            sigBadge.className = data.sig === 'BUY'
-                ? 'px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'
-                : (data.sig === 'SELL'
-                    ? 'px-2 py-0.5 rounded text-[10px] font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30'
-                    : 'px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30');
-        }
-    };
-
-    formatSubModal('Ict', sub.ict);
-    formatSubModal('Ema', sub.ema);
-    formatSubModal('Vol', sub.vol);
-    formatSubModal('Rsi', sub.rsi);
-}
-
-function applySignalToOnChartCalc() {
-    if (currentChartAsset !== currentModalSignalAsset) {
-        switchChartAsset(currentModalSignalAsset);
-    } else {
-        autoAlignPricesToChart();
-    }
-    closeSignalPopup();
-}
-
-function logTradeFromCalculator() {
-    const entry = parseFloat(document.getElementById('calcPriceEntry').value) || 0;
-    const sl = parseFloat(document.getElementById('calcPriceStop').value) || 0;
-    const tp = parseFloat(document.getElementById('calcPriceTarget').value) || 0;
-    const lotsText = document.getElementById('lotOutVal').innerText;
-    const plan = updateTradePlanState();
-
-    const lotSize = Number.parseFloat(String(lotsText).replace(/[^0-9.]/g, '')) || 0.10;
-    const exitPrice = activeTradeDirection === 'BUY' ? tp : sl;
-    const pnl = calculateTradePnl({
-        asset: currentChartAsset,
-        direction: activeTradeDirection,
-        entry,
-        lotSize,
-        stopLoss: sl,
-        takeProfit: tp
-    }, exitPrice);
-
-    sampleJournalLogs.unshift({
-        id: Date.now(),
-        time: new Date().toLocaleTimeString('en-GB', { hour12: false }) + ' SAST',
-        asset: currentChartAsset,
-        type: activeTradeDirection,
-        lot: lotSize.toFixed(2),
-        entry: entry.toString(),
-        exit: exitPrice.toString(),
-        pnl: Number(pnl.toFixed(2)),
-        risk: formatZar(plan.perTradeLoss),
-        target: formatZar(plan.perTradeTarget),
-        balanceAfter: formatZar(plan.accountEquity + pnl),
-        note: 'Manual journal log'
-    });
-
-    persistJournalLogs();
-    renderJournalTable();
-    renderTradeInsightsPage();
-    switchPage('journal');
-}
-
-function calculateTradePnl(trade, exitPrice) {
-    const spec = assetSpecs[trade.asset];
-    const priceMove = trade.direction === 'BUY' ? exitPrice - trade.entry : trade.entry - exitPrice;
-    const priceUnit = trade.asset === 'XAUUSD' ? 100 : trade.asset === 'EURUSD' ? 100000 : 1;
-    const pnlUsd = priceMove * trade.lotSize * priceUnit;
-    return pnlUsd * globalUsdZarRate;
+        </div>
+    `).join('');
 }
 
 function renderJournalTable() {
     const tbody = document.getElementById('journalTableBody');
     if (!tbody) return;
-    tbody.innerHTML = '';
-
-    let totalPnl = 0;
-
-    sampleJournalLogs.forEach(row => {
-        totalPnl += Number(row.pnl) || 0;
-        const tr = document.createElement('tr');
-        tr.className = "hover:bg-[#0f1624] transition border-b border-[#1a2436]";
-        tr.innerHTML = `
+    tbody.innerHTML = sampleJournalLogs.map(row => `
+        <tr class="hover:bg-[#0f1624] border-b border-[#1a2436] text-xs">
             <td class="p-3 text-slate-400">${row.time}</td>
             <td class="p-3 font-bold text-white">${row.asset}</td>
             <td class="p-3 font-bold ${row.type === 'BUY' ? 'text-emerald-400' : 'text-rose-400'}">${row.type}</td>
             <td class="p-3 text-slate-300">${row.lot}</td>
             <td class="p-3 text-slate-300">${row.entry}</td>
             <td class="p-3 text-slate-300">${row.exit}</td>
-            <td class="p-3 font-bold ${Number(row.pnl) >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatZar(row.pnl)}</td>
-            <td class="p-3 text-slate-300">${row.risk || '—'}</td>
-            <td class="p-3 text-slate-300">${row.target || '—'}</td>
-            <td class="p-3 text-slate-300">${row.balanceAfter || '—'}</td>
-            <td class="p-3 text-slate-300">${row.note || 'Trade'}</td>
-            <td class="p-3">
-                <button onclick="deleteJournalRow(${row.id})" class="text-slate-500 hover:text-rose-400 p-1">
-                    <i data-lucide="trash-2" class="w-4 h-4"></i>
-                </button>
-            </td>
-        `;
-        tbody.appendChild(tr);
+            <td class="p-3 font-bold ${row.pnl >= 0 ? 'text-emerald-400' : 'text-rose-400'}">${formatZar(row.pnl)}</td>
+            <td class="p-3 text-slate-400">${row.note}</td>
+        </tr>
+    `).join('');
+}
+
+function switchPage(pageId) {
+    ['chart', 'signal15m', 'signal5m', 'events', 'journal'].forEach(p => {
+        const sec = document.getElementById(`page-${p}`);
+        if (sec) sec.classList.add('hidden');
     });
 
-    const totEl = document.getElementById('journalTotalPnl');
-    if (totEl) totEl.innerText = `${formatZar(totalPnl)}`;
-    renderTradeInsightsPage();
-    lucide.createIcons();
+    const activeSec = document.getElementById(`page-${pageId}`);
+    if (activeSec) activeSec.classList.remove('hidden');
+
+    if (pageId === 'signal15m') render15mSignalPage();
+    if (pageId === 'signal5m') render5mSignalPage();
+    if (pageId === 'events') renderEventsDesk();
+    if (pageId === 'journal') renderJournalTable();
 }
 
-function exportJournalCSV() {
-    let csvContent = "data:text/csv;charset=utf-8,Time,Asset,Type,Lot,Entry,Exit,PnL_ZAR,Risk,Target,Balance_Left,Note\n";
-    sampleJournalLogs.forEach(r => {
-        csvContent += `${r.time},${r.asset},${r.type},${r.lot},${r.entry},${r.exit},${r.pnl},${r.risk || ''},${r.target || ''},${r.balanceAfter || ''},${r.note || ''}\n`;
-    });
-    const encodedUri = encodeURI(csvContent);
-    const link = document.createElement("a");
-    link.setAttribute("href", encodedUri);
-    link.setAttribute("download", `TradePro_Scalp_Journal_${Date.now()}.csv`);
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-
-function deleteJournalRow(id) {
-    sampleJournalLogs = sampleJournalLogs.filter(r => r.id !== id);
-    persistJournalLogs();
-    renderJournalTable();
-}
-
-function startLiveClock() {
+function startLiveSimulation() {
     setInterval(() => {
-        const now = new Date();
-        const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
-        const clockEl = document.getElementById('liveTimeClock');
-        if (clockEl) clockEl.innerText = timeStr;
+        updateMarketStatusIndicator();
 
-        if (now.getSeconds() % 3 === 0) {
-            const quant = runQuantAnalysis(currentChartAsset);
-            const tickEl = document.getElementById('chartLiveTickPrice');
-            if (tickEl) tickEl.innerText = quant.currentPrice;
+        if (isMarketOpen()) {
+            Object.keys(livePrices).forEach(asset => {
+                const spec = assetSpecs[asset];
+                const change = (Math.random() - 0.49) * (spec.atr5m * 0.08);
+                livePrices[asset] = parseFloat((livePrices[asset] + change).toFixed(spec.dec));
+            });
+        }
 
-            const modal = document.getElementById('signalModal');
-            if (modal && !modal.classList.contains('hidden')) {
-                updateModalSignalAssetUI(currentModalSignalAsset);
-            }
+        if (activeOpenTrade && activeOpenTrade.status === 'OPEN') {
+            updateOpenTradePanel();
         }
     }, 1000);
 }
 
-function hasDemoSession() {
-    try {
-        return sessionStorage.getItem('tradeProDemoSignedIn') === 'true';
-    } catch {
-        return false;
-    }
-}
-
-function signOutDemoSession() {
-    try {
-        sessionStorage.removeItem('tradeProDemoSignedIn');
-    } catch {
-        // Continue to the sign-in page if browser storage is unavailable.
-    }
-    window.location.replace('signin.html');
-}
-
-function ensureMobileNavigation(pageId) {
-    const header = document.querySelector('header');
-    const headerContent = header?.firstElementChild;
-    const desktopNav = header?.querySelector('nav');
-    if (!header || !headerContent || !desktopNav || document.getElementById('mobileDrawer')) return;
-
-    const hamburger = document.createElement('button');
-    hamburger.id = 'hamburgerBtn';
-    hamburger.type = 'button';
-    hamburger.setAttribute('aria-label', 'Open navigation');
-    hamburger.setAttribute('aria-expanded', 'false');
-    hamburger.className = 'mobile-menu-button';
-    hamburger.innerHTML = '<i data-lucide="menu" id="hamburgerIcon" class="w-5 h-5"></i>';
-    hamburger.addEventListener('click', toggleMobileMenu);
-    headerContent.prepend(hamburger);
-    const mobileViewport = window.matchMedia('(max-width: 860px)');
-    const updateNavigationVisibility = () => {
-        hamburger.hidden = !mobileViewport.matches;
-        if (mobileViewport.matches) desktopNav.style.setProperty('display', 'none', 'important');
-        else desktopNav.style.removeProperty('display');
-    };
-    updateNavigationVisibility();
-    mobileViewport.addEventListener('change', updateNavigationVisibility);
-
-    const pages = [
-        ['chart', 'index.html', 'candlestick-chart', '5m Scalp & Lot Desk'],
-        ['guardrail', 'guardrail.html', 'shield-check', 'Risk Guardrail'],
-        ['matrix', 'matrix.html', 'cpu', '5m Strategy Matrix'],
-        ['events', 'events.html', 'calendar', 'Events Desk'],
-        ['journal', 'journal.html', 'book-open', 'ZAR Trade Journal'],
-        ['insights', 'insights.html', 'bar-chart-3', 'Trade Insights'],
-        ['sadesk', 'sadesk.html', 'globe', 'Exness SA Desk']
-    ];
-    const backdrop = document.createElement('div');
-    backdrop.id = 'mobileDrawerBackdrop';
-    backdrop.className = 'mobile-drawer-backdrop';
-    backdrop.addEventListener('click', closeMobileMenu);
-
-    const drawer = document.createElement('aside');
-    drawer.id = 'mobileDrawer';
-    drawer.className = 'mobile-drawer';
-    drawer.setAttribute('aria-label', 'Terminal navigation');
-    drawer.setAttribute('aria-hidden', 'true');
-    drawer.innerHTML = `
-        <div>
-            <div class="mobile-drawer-heading">
-                <a href="index.html" class="mobile-drawer-brand"><span>TP</span><span>TRADE PRO<small>POWERED BY KIDDOWGEE</small></span></a>
-                <button type="button" class="mobile-drawer-close" aria-label="Close navigation"><i data-lucide="x" class="w-5 h-5"></i></button>
-            </div>
-            <p class="mobile-drawer-label">TERMINAL DESKS</p>
-            <nav aria-label="Mobile terminal desks">${pages.map(([id, href, icon, label]) => `
-                <a href="${href}" class="mobile-drawer-link${id === pageId ? ' nav-tab-active' : ''}"${id === pageId ? ' aria-current="page"' : ''}>
-                    <i data-lucide="${icon}" class="w-4 h-4"></i><span>${label}</span>
-                </a>`).join('')}
-                <a href="signin.html" id="mobileSignOut" class="mobile-drawer-link text-rose-300"><i data-lucide="log-out" class="w-4 h-4"></i><span>Sign out</span></a>
-            </nav>
-        </div>
-        <div class="mobile-drawer-footer"><span>Broker <b>Exness (1:1000)</b></span><span>Currency <b>ZAR (Rands)</b></span><span>Mode <b>High-Frequency 5m Scalp</b></span></div>`;
-    drawer.querySelector('.mobile-drawer-close').addEventListener('click', closeMobileMenu);
-    drawer.querySelector('#mobileSignOut').addEventListener('click', signOutDemoSession);
-
-    document.body.append(backdrop, drawer);
-    document.addEventListener('keydown', (event) => {
-        if (event.key === 'Escape') closeMobileMenu();
-    });
-}
-
-function ensureOpenTradePanel() {
-    if (document.getElementById('openTradePanel')) return;
-    const panel = document.createElement('aside');
-    panel.id = 'openTradePanel';
-    panel.className = 'fixed right-5 bottom-5 z-[65] w-[320px] rounded-2xl border border-[#1a2436] bg-[#0a0f18]/90 shadow-2xl hidden cursor-grab select-none';
-    panel.innerHTML = `
-        <div class="draggable-handle flex items-center justify-between border-b border-[#1a2436] px-4 py-3" style="touch-action:none">
-            <b class="font-mono text-xs font-extrabold uppercase text-white">Open Trade</b>
-            <button onclick="toggleOpenTradePanel('minimize')" aria-label="Minimize open trade panel" class="rounded-lg border border-[#1a2436] bg-[#0f1624] p-1.5 text-slate-300"><i data-lucide="minus" class="h-3.5 w-3.5"></i></button>
-        </div>
-        <div id="openTradePanelBody" class="space-y-3 p-4 font-mono text-xs">
-            <div class="flex justify-between"><span>Pair</span><b id="openTradeAsset">—</b></div>
-            <div class="flex justify-between"><span>Direction</span><b id="openTradeDirection">—</b></div>
-            <div class="flex justify-between"><span>Lot size</span><b id="openTradeLots">—</b></div>
-            <div class="flex justify-between"><span>Entry</span><b id="openTradeEntry">—</b></div>
-            <div class="flex justify-between"><span>Stop loss</span><b id="openTradeStop">—</b></div>
-            <div class="flex justify-between"><span>Take profit</span><b id="openTradeTP">—</b></div>
-            <div class="flex justify-between"><span>Live price</span><b id="openTradeLivePrice">—</b></div>
-            <div class="flex justify-between"><span>Live P/L</span><b id="openTradeLivePnl">—</b></div>
-        </div>`;
-
-    const minimized = document.createElement('button');
-    minimized.id = 'openTradePanelMinimized';
-    minimized.type = 'button';
-    minimized.className = 'fixed right-5 bottom-5 z-[66] hidden rounded-xl border border-[#1a2436] bg-[#0a0f18]/90 px-3 py-2 text-xs font-mono font-extrabold uppercase text-white shadow-xl';
-    minimized.innerHTML = '<span>Open Trade</span> <span id="openTradeMinimizedPnl" class="hidden rounded-md px-1.5 py-0.5 text-[11px]"></span>';
-    minimized.addEventListener('click', () => toggleOpenTradePanel('restore'));
-    document.body.append(panel, minimized);
-    makeTradePanelDraggable();
-}
-
 window.onload = function() {
-    const pageId = document.body.dataset.page;
-    if (pageId && !hasDemoSession()) {
-        window.location.replace('signin.html');
-        return;
-    }
+    startLiveSimulation();
+    initTradingViewWidget('OANDA:XAUUSD');
+    calculateBrokerRecommendations();
+    render15mSignalPage();
+    render5mSignalPage();
+    renderJournalTable();
+    window.addEventListener('resize', renderChartStructureOverlay);
 
-    ensureMobileNavigation(pageId);
-    ensureOpenTradePanel();
-    const pageNav = document.querySelector('header nav');
-    if (pageId && pageNav && !document.getElementById('demoSignOut')) {
-        const signOutLink = document.createElement('a');
-        signOutLink.id = 'demoSignOut';
-        signOutLink.href = 'signin.html';
-        signOutLink.textContent = 'Sign out';
-        signOutLink.className = 'px-3 py-2 rounded-lg text-rose-300';
-        signOutLink.addEventListener('click', signOutDemoSession);
-        pageNav.appendChild(signOutLink);
-    }
-
-    if (typeof lucide !== 'undefined') lucide.createIcons();
-    startLiveClock();
-    if (document.getElementById('page-chart')) {
-        const savedRisk = readStoredValue('tradeProPlan', null);
-        const savedChart = readStoredValue('tradeProChartState', null);
-        if (savedRisk) tradePlanState = { ...tradePlanState, ...savedRisk };
-        if (savedChart) {
-            currentChartAsset = assetSpecs[savedChart.asset] ? savedChart.asset : 'XAUUSD';
-            currentChartTF = ['1', '5', '15', '60'].includes(savedChart.timeframe) ? savedChart.timeframe : '5';
-            manualCustomLot = Number(savedChart.manualLot) || manualCustomLot;
-        }
-        const riskOutput = document.getElementById('guardOutPerTradeLoss');
-        if (riskOutput) riskOutput.textContent = formatZar(tradePlanState.perTradeLoss);
-        initTradingViewChart(assetSpecs[currentChartAsset].tvSymbol, currentChartTF);
-        if (savedChart) {
-            switchChartAsset(currentChartAsset);
-            const entry = document.getElementById('calcPriceEntry');
-            const stop = document.getElementById('calcPriceStop');
-            const target = document.getElementById('calcPriceTarget');
-            if (entry && savedChart.entry) entry.value = savedChart.entry;
-            if (stop && savedChart.stop) stop.value = savedChart.stop;
-            if (target && savedChart.target) target.value = savedChart.target;
-            setTradeDirection(savedChart.direction === 'SELL' ? 'SELL' : 'BUY');
-            setLotSizeMode(savedChart.lotMode === 'MANUAL' ? 'MANUAL' : 'AUTO');
-            switchChartTF(currentChartTF);
-            recalculateZarLots();
-        } else {
-            autoAlignPricesToChart();
-        }
-        updateTradeStatusBadge();
-        updateOpenTradePanel();
-        makeTradePanelDraggable();
-    }
-    if (document.getElementById('page-guardrail')) {
-        const savedRisk = readStoredValue('tradeProPlan', null);
-        if (savedRisk) {
-            tradePlanState = { ...tradePlanState, ...savedRisk };
-            document.getElementById('equityInput').value = tradePlanState.accountEquity;
-            document.getElementById('maxLossInput').value = tradePlanState.maxLoss;
-            document.getElementById('targetProfitInput').value = tradePlanState.targetProfit;
-            document.getElementById('plannedTradesInput').value = tradePlanState.plannedTrades;
-        }
-        runGuardrailCheck();
-    }
-    if (document.getElementById('page-matrix')) render15mMatrixUI(currentMatrixAsset);
-    if (document.getElementById('page-events')) renderEventsDesk();
-    if (document.getElementById('page-journal')) renderJournalTable();
-    if (document.getElementById('page-insights')) renderTradeInsightsPage();
-    updateOpenTradePanel();
-    if (activeOpenTrade?.status === 'OPEN') startTradeTracking();
+    // Event listeners for capital & risk inputs
+    ['userBalanceInput', 'userRiskPercentInput', 'userTargetProfitInput', 'userTradesPerSessionInput', 'userLotSizeInput'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.addEventListener('input', updateAccountCapitalAndRisk);
+    });
 };

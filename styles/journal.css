@@ -1,5 +1,0 @@
-@import url('../styles.css');
-nav a { color: #b1bfd0; padding: .5rem .7rem; border-radius: .6rem; }
-nav a:hover, nav a.desktop-nav-active { color: #fff; background: rgba(145,161,183,.12); }
-th { white-space: nowrap; }
-@media (max-width: 860px) { header nav { display: flex !important; flex-wrap: wrap; } }

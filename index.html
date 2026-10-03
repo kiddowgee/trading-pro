@@ -3,102 +3,215 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="color-scheme" content="dark">
-    <meta name="theme-color" content="#04070d">
-    <title>Trade Pro | 5m Scalp & Lot Desk</title>
+    <title>TradePro — Exness & Vault Markets Capital Engine</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script src="https://unpkg.com/lucide@latest"></script>
     <script src="https://s3.tradingview.com/tv.js"></script>
-    <link rel="stylesheet" href="styles/chart.css">
+    <link rel="stylesheet" href="styles.css">
+    <script src="script.js" defer></script>
 </head>
-<body class="min-h-screen flex flex-col custom-scrollbar">
-    <div id="tradeAlertContainer" class="fixed top-5 right-5 z-[70] flex flex-col items-end gap-2 pointer-events-none"></div>
-    <aside id="openTradePanel" class="fixed right-5 bottom-5 z-[65] w-[320px] rounded-2xl border border-[#1a2436] bg-[#0a0f18]/90 shadow-2xl hidden cursor-grab select-none">
-        <div class="draggable-handle flex items-center justify-between border-b border-[#1a2436] px-4 py-3" style="touch-action:none"><b class="font-mono text-xs text-white">OPEN TRADE</b><button onclick="toggleOpenTradePanel('minimize')" aria-label="Minimize open trade panel">−</button></div>
-        <div id="openTradePanelBody" class="space-y-3 p-4 font-mono text-xs"><div>Pair <b id="openTradeAsset">—</b></div><div>Direction <b id="openTradeDirection">—</b></div><div>Lot size <b id="openTradeLots">—</b></div><div>Entry <b id="openTradeEntry">—</b></div><div>Stop loss <b id="openTradeStop">—</b></div><div>Take profit <b id="openTradeTP">—</b></div><div>Live price <b id="openTradeLivePrice">—</b></div><div>Live P/L <b id="openTradeLivePnl">—</b></div></div>
-    </aside>
-    <button id="openTradePanelMinimized" onclick="toggleOpenTradePanel('restore')" class="fixed right-5 bottom-5 z-[66] hidden rounded-xl border border-[#1a2436] bg-[#0a0f18]/90 px-3 py-2 text-xs font-mono text-white">Open Trade <span id="openTradeMinimizedPnl" class="hidden"></span></button>
-    <header class="bg-[#080c14] border-b border-[#1a2436] sticky top-0 z-40">
-        <div class="max-w-[1920px] mx-auto px-4 sm:px-6 min-h-16 flex flex-wrap items-center justify-between gap-3 py-2">
-            <a href="index.html" class="flex items-center gap-3 text-white font-mono font-black"><span class="w-9 h-9 rounded-xl bg-blue-700 flex items-center justify-center">TP</span><span>TRADE PRO <small class="text-amber-400">5M SCALP</small></span></a>
-            <nav class="flex flex-wrap gap-1 text-xs font-mono" aria-label="Terminal desks">
-                <a class="desktop-nav-active px-3 py-2 rounded-lg" href="index.html">Scalp & Lot</a><a class="px-3 py-2 rounded-lg" href="guardrail.html">Risk Guardrail</a><a class="px-3 py-2 rounded-lg" href="matrix.html">Strategy Matrix</a><a class="px-3 py-2 rounded-lg" href="events.html">Events</a><a class="px-3 py-2 rounded-lg" href="journal.html">Journal</a><a class="px-3 py-2 rounded-lg" href="insights.html">Insights</a><a class="px-3 py-2 rounded-lg" href="sadesk.html">Exness SA</a>
-            </nav>
-            <div class="flex shrink-0 items-center gap-2 sm:gap-3 font-mono text-xs"><span class="hidden sm:inline text-slate-400">SAST <b id="liveTimeClock" class="text-amber-400">--:--:--</b></span><button onclick="triggerSignalPopup()" class="flex items-center gap-2 rounded-xl border border-amber-300/30 bg-gradient-to-r from-amber-500 to-amber-600 px-3 py-2 font-extrabold text-slate-950 shadow-lg"><i data-lucide="zap" class="h-4 w-4"></i><span class="hidden sm:inline">5M LIVE SCALP SIGNALS</span><span class="sm:hidden">SIGNALS</span></button></div>
+<body class="p-3 md:p-5 space-y-4">
+
+    <!-- Header Navigation -->
+    <header class="pro-panel p-3.5 flex flex-wrap items-center justify-between gap-3">
+        <div class="flex items-center space-x-3">
+            <div class="h-3 w-3 rounded-full bg-emerald-500 animate-pulse"></div>
+            <span class="font-mono font-bold text-base tracking-wider text-white">TRADEPRO <span class="text-xs text-amber-400">EXNESS / VAULT ENGINE</span></span>
+            <span id="marketStatusBadge" class="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-500/20 text-rose-400 border border-rose-500/30">CHECKING...</span>
+            <span id="tradeStatusBadge" class="text-slate-400 font-bold font-mono text-xs">NO OPEN TRADE</span>
         </div>
+
+        <nav class="flex items-center gap-2 overflow-x-auto">
+            <button onclick="switchPage('chart')" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-200 hover:bg-white/5">Terminal</button>
+            <button onclick="switchPage('signal15m')" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">15m Macro Signal Page</button>
+            <button onclick="switchPage('signal5m')" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">5m Scalp Signal Page</button>
+            <button onclick="switchPage('events')" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:bg-white/5">News Events</button>
+            <button onclick="switchPage('journal')" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:bg-white/5">Journal</button>
+        </nav>
     </header>
-    <div id="newsRadarBanner" class="px-4 py-2 text-xs font-mono text-amber-300">5M SCALP RADAR: Fast scalping mode active, signals update from 9/21 EMA and 5m order blocks. <a class="underline" href="events.html">View economic events</a></div>
-    <main class="flex-1 max-w-[1920px] w-full mx-auto px-4 sm:px-6 py-5">
-        <section id="page-chart" class="space-y-4">
-            <div class="pro-panel p-3 rounded-xl flex flex-wrap items-center justify-between gap-3">
-                <div class="flex flex-wrap items-center gap-2 font-mono text-xs">
-                    <span class="text-xs font-mono text-slate-400 font-bold uppercase mr-1">Scalp Asset:</span>
-                    <button onclick="switchChartAsset('XAUUSD')" id="btn-asset-XAUUSD" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">XAUUSD (Gold)</button>
-                    <button onclick="switchChartAsset('EURUSD')" id="btn-asset-EURUSD" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white bg-[#0f1624] border border-[#1a2436]">EURUSD</button>
-                    <button onclick="switchChartAsset('US100')" id="btn-asset-US100" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 hover:text-white bg-[#0f1624] border border-[#1a2436]">NAS100 (USTEC)</button>
+
+    <div id="tradeAlertContainer" class="fixed top-20 right-5 z-50 w-80 pointer-events-none"></div>
+
+    <!-- MAIN TERMINAL PAGE -->
+    <main id="page-chart" class="grid grid-cols-1 lg:grid-cols-4 gap-4">
+        
+        <!-- Left: Interactive Chart Engine -->
+        <div class="lg:col-span-3 space-y-3">
+            <div class="pro-panel p-2.5 flex justify-between items-center">
+                <div class="flex gap-2">
+                    <button id="btn-asset-XAUUSD" onclick="switchChartAsset('XAUUSD')" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">XAUUSD</button>
+                    <button id="btn-asset-EURUSD" onclick="switchChartAsset('EURUSD')" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 bg-[#0f1624] border border-[#1a2436]">EURUSD</button>
+                    <button id="btn-asset-US100" onclick="switchChartAsset('US100')" class="px-3 py-1.5 rounded-lg text-xs font-mono font-bold text-slate-400 bg-[#0f1624] border border-[#1a2436]">US100</button>
                 </div>
-                <div class="flex flex-wrap items-center gap-2 font-mono text-xs">
-                    <span class="text-xs font-mono text-slate-400 font-bold uppercase mr-1">Timeframe:</span>
-                    <button onclick="switchChartTF('1')" id="tf-1" class="px-2.5 py-1 rounded text-xs font-mono bg-[#0f1624] text-slate-400 border border-[#1a2436] hover:text-white">1m</button>
-                    <button onclick="switchChartTF('5')" id="tf-5" class="px-2.5 py-1 rounded text-xs font-mono bg-amber-500 text-slate-950 border border-amber-400 font-extrabold">5m (SCALP)</button>
-                    <button onclick="switchChartTF('15')" id="tf-15" class="px-2.5 py-1 rounded text-xs font-mono bg-[#0f1624] text-slate-400 border border-[#1a2436] hover:text-white">15m</button>
-                    <button onclick="switchChartTF('60')" id="tf-60" class="px-2.5 py-1 rounded text-xs font-mono bg-[#0f1624] text-slate-400 border border-[#1a2436] hover:text-white">1h</button>
-                </div>
-                <div class="flex items-center space-x-3 bg-[#05080e] px-3 py-1.5 rounded-lg border border-[#1a2436]">
-                    <span class="text-xs font-mono text-slate-400">Live Tick:</span>
-                    <span id="chartLiveTickPrice" class="font-mono font-extrabold text-xs text-emerald-400">2,652.80</span>
-                    <span id="chartLiveTickDiff" class="text-[10px] font-mono text-emerald-400 font-bold bg-emerald-500/10 px-1.5 py-0.5 rounded">+0.80</span>
+                <div class="text-xs font-mono text-slate-400">
+                    Forex Capital: <strong id="displayUserBalance" class="text-emerald-400">R 10,000.00</strong> | Live Quote: <strong id="livePriceQuoteDisplay" class="text-white">4,140.52</strong>
                 </div>
             </div>
-            <div class="grid grid-cols-1 lg:grid-cols-12 gap-5">
-                <div class="lg:col-span-8 pro-panel rounded-2xl p-2 h-[600px] lg:h-[680px] relative flex flex-col">
-                    <div id="tradingview_widget" class="w-full h-full rounded-xl overflow-hidden"></div>
-                </div>
-                <div class="lg:col-span-4 pro-panel rounded-2xl p-5 space-y-4 flex flex-col justify-between">
-                    <div class="space-y-4">
-                        <div class="flex items-center justify-between border-b border-[#1a2436] pb-3">
-                            <div class="flex items-center space-x-2"><i data-lucide="calculator" class="w-4 h-4 text-blue-400"></i><h2 class="font-mono font-extrabold text-sm text-white uppercase">5M SCALP LOT &amp; MARGIN DESK</h2></div>
-                            <span id="syncedBadgeTag" class="text-[10px] font-mono bg-blue-500/20 text-blue-300 border border-blue-500/40 px-2 py-0.5 rounded font-bold">SYNCED</span>
-                        </div>
-                        <div class="grid grid-cols-2 gap-2">
-                            <button onclick="confirmTradeSetup('BUY')" id="btnDirBuy" class="py-2 rounded-xl font-mono text-xs font-extrabold bg-emerald-500 text-slate-950 shadow-lg shadow-emerald-500/20 transition flex items-center justify-center space-x-1.5"><i data-lucide="trending-up" class="w-4 h-4"></i><span>BUY / LONG</span></button>
-                            <button onclick="confirmTradeSetup('SELL')" id="btnDirSell" class="py-2 rounded-xl font-mono text-xs font-bold bg-[#0f1624] text-slate-400 border border-[#1a2436] hover:text-white transition flex items-center justify-center space-x-1.5"><i data-lucide="trending-down" class="w-4 h-4"></i><span>SELL / SHORT</span></button>
-                        </div>
-                        <div class="space-y-2">
-                            <div class="flex items-center justify-between"><label class="text-xs font-mono text-slate-400 font-bold uppercase">Sizing Mode:</label><div class="flex items-center space-x-1 bg-[#05080e] p-1 rounded-lg border border-[#1a2436]"><button onclick="setLotSizeMode('AUTO')" id="lotModeAutoBtn" class="px-2.5 py-0.5 rounded text-[11px] font-mono font-bold bg-blue-600 text-white">AUTO (Risk-Based)</button><button onclick="setLotSizeMode('MANUAL')" id="lotModeManualBtn" class="px-2.5 py-0.5 rounded text-[11px] font-mono font-bold text-slate-400 hover:text-slate-200">MANUAL</button></div></div>
-                            <div id="lotPresetRow" class="grid grid-cols-6 gap-1 opacity-50 pointer-events-none transition-all"><button onclick="setPresetLot(0.01)" class="py-1 bg-[#0f1624] border border-[#1a2436] hover:border-blue-500 rounded text-[10px] font-mono text-slate-300 font-bold">0.01</button><button onclick="setPresetLot(0.05)" class="py-1 bg-[#0f1624] border border-[#1a2436] hover:border-blue-500 rounded text-[10px] font-mono text-slate-300 font-bold">0.05</button><button onclick="setPresetLot(0.10)" class="py-1 bg-[#0f1624] border border-[#1a2436] hover:border-blue-500 rounded text-[10px] font-mono text-slate-300 font-bold">0.10</button><button onclick="setPresetLot(0.25)" class="py-1 bg-[#0f1624] border border-[#1a2436] hover:border-blue-500 rounded text-[10px] font-mono text-slate-300 font-bold">0.25</button><button onclick="setPresetLot(0.50)" class="py-1 bg-[#0f1624] border border-[#1a2436] hover:border-blue-500 rounded text-[10px] font-mono text-slate-300 font-bold">0.50</button><button onclick="setPresetLot(1.00)" class="py-1 bg-[#0f1624] border border-[#1a2436] hover:border-blue-500 rounded text-[10px] font-mono text-slate-300 font-bold">1.00</button></div>
-                        </div>
-                        <div class="space-y-3 font-mono text-xs">
-                            <label class="flex items-center justify-between gap-3"><span class="text-slate-400">Entry Price:</span><input type="number" step="any" id="calcPriceEntry" oninput="recalculateZarLots()" value="2652.80" class="w-32 bg-[#05080e] border border-[#1a2436] rounded-lg px-2.5 py-1 text-right text-amber-400 font-extrabold"></label>
-                            <label class="flex items-center justify-between gap-3"><span class="text-slate-400">Stop Loss Price:</span><input type="number" step="any" id="calcPriceStop" oninput="recalculateZarLots()" value="2649.30" class="w-32 bg-[#05080e] border border-[#1a2436] rounded-lg px-2.5 py-1 text-right text-rose-400 font-extrabold"></label>
-                            <label class="flex items-center justify-between gap-3"><span class="text-slate-400">Take Profit Price:</span><input type="number" step="any" id="calcPriceTarget" oninput="recalculateZarLots()" value="2658.80" class="w-32 bg-[#05080e] border border-[#1a2436] rounded-lg px-2.5 py-1 text-right text-emerald-400 font-extrabold"></label>
-                        </div>
-                        <button onclick="autoAlignPricesToChart()" class="w-full py-2 bg-[#0f1624] border border-[#1a2436] hover:bg-[#1a2436] text-amber-400 font-mono text-xs rounded-xl font-bold flex items-center justify-center gap-2"><i data-lucide="refresh-cw" class="w-3.5 h-3.5"></i><span>RE-CALCULATE FROM 5M SCALP ENGINE</span></button>
-                        <div id="tradePlanSummary" class="bg-[#05080e] border border-[#1a2436] rounded-xl p-3.5 space-y-2 font-mono text-[11px]"></div>
-                        <div class="bg-[#05080e] border border-[#1a2436] rounded-xl p-3.5 space-y-2.5 font-mono text-xs">
-                            <div class="flex items-center justify-between"><span class="text-slate-400">Scalp Position Size:</span><span id="lotOutVal" class="text-lg font-extrabold text-blue-400">0.28 Lots</span></div>
-                            <div class="flex items-center justify-between text-[11px]"><span class="text-slate-400">SL Distance:</span><span id="lotOutPipsSL" class="text-rose-400 font-bold">3.50 Pips (-R 500)</span></div>
-                            <div class="flex items-center justify-between text-[11px]"><span class="text-slate-400">TP Distance:</span><span id="lotOutPipsTP" class="text-emerald-400 font-bold">6.00 Pips (+R 850)</span></div>
-                            <div class="flex items-center justify-between text-[11px] border-t border-[#1a2436] pt-2"><span class="text-slate-400">Exness Margin Locked:</span><span id="lotOutMarginZar" class="text-amber-400 font-bold">R 1,373.45 ZAR</span></div>
-                            <div class="flex items-center justify-between text-[11px] border-t border-[#1a2436] pt-2"><span class="text-slate-400">Trade Status:</span><div class="flex items-center gap-2"><span id="tradeStatusBadge" class="font-bold text-slate-400">NO OPEN TRADE</span><button onclick="closeOpenTrade()" id="closeTradeBtn" class="px-2 py-1 rounded border border-rose-500/30 bg-rose-500/10 text-rose-300 font-bold text-[10px]">CLOSE</button></div></div>
-                        </div>
-                    </div>
-                    <button onclick="logTradeFromCalculator()" class="w-full py-3 bg-gradient-to-r from-emerald-600 to-teal-600 text-white rounded-xl font-mono text-xs font-extrabold flex items-center justify-center gap-2"><i data-lucide="plus-circle" class="w-4 h-4"></i><span>LOG TO TRADE PRO JOURNAL</span></button>
-                </div>
+
+            <div class="chart-wrapper pro-panel">
+                <div id="tradingview_widget"></div>
+                <canvas id="chartOverlayCanvas"></canvas>
             </div>
-        </section>
-    </main>
-    <div id="signalModal" class="fixed inset-0 modal-backdrop z-50 hidden items-center justify-center p-4">
-        <div class="pro-panel relative max-h-[92vh] w-full max-w-2xl space-y-5 overflow-y-auto rounded-2xl border border-amber-500/40 bg-[#0a0f18] p-6 shadow-2xl custom-scrollbar">
-            <button onclick="closeSignalPopup()" aria-label="Close signal details" class="absolute right-4 top-4 rounded-lg border border-[#1a2436] bg-[#0f1624] p-1.5 text-slate-400 hover:text-white"><i data-lucide="x" class="w-5 h-5"></i></button>
-            <div class="flex items-center justify-between border-b border-[#1a2436] pb-3"><div class="flex items-center gap-2"><span class="text-xs font-mono font-bold uppercase text-slate-400">Scalp Asset:</span><div class="flex items-center gap-1 rounded-lg border border-[#1a2436] bg-[#05080e] p-1"><button onclick="switchModalSignalAsset('XAUUSD')" id="modalTabXAUUSD" class="rounded px-3 py-1 text-xs font-mono font-bold">XAUUSD</button><button onclick="switchModalSignalAsset('EURUSD')" id="modalTabEURUSD" class="rounded px-3 py-1 text-xs font-mono font-bold">EURUSD</button><button onclick="switchModalSignalAsset('US100')" id="modalTabUS100" class="rounded px-3 py-1 text-xs font-mono font-bold">NAS100</button></div></div></div>
-            <div class="flex flex-col items-start justify-between gap-3 border-b border-[#1a2436] pb-3 sm:flex-row sm:items-center"><div class="flex items-center gap-3"><div class="rounded-xl border border-amber-500/30 bg-amber-500/20 p-2.5 text-amber-400"><i data-lucide="zap" class="h-6 w-6"></i></div><div><div class="flex flex-wrap items-center gap-2 font-mono"><span id="popupAssetTag" class="text-base font-extrabold text-white">XAUUSD (GOLD)</span><span class="rounded bg-amber-500/10 px-2 py-0.5 text-xs font-bold text-amber-400">5m FAST SCALP</span></div><p class="text-xs font-mono text-slate-400">Exness 1:1000 Fast Execution Model</p></div></div><div class="flex flex-col items-start sm:items-end"><span class="text-[10px] font-mono uppercase text-slate-400">Master Scalp Signal</span><span id="popupMasterSignalBadge" class="flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-500/20 px-3 py-1 text-xs font-mono font-extrabold text-emerald-400"><i data-lucide="check-circle" class="h-3.5 w-3.5"></i><span id="popupMasterSignalText">STRONG BUY (3/4 SCALP CONFLUENCE)</span></span></div></div>
-            <div class="grid grid-cols-2 gap-3 font-mono text-xs sm:grid-cols-4"><div class="rounded-xl border border-[#1a2436] bg-[#05080e] p-2.5"><span class="text-[10px] uppercase text-slate-400">Entry Price</span><div id="popupEntryPrice" class="mt-0.5 font-extrabold text-amber-400">2,652.80</div></div><div class="rounded-xl border border-[#1a2436] bg-[#05080e] p-2.5"><span class="text-[10px] uppercase text-slate-400">Scalp Stop Loss</span><div id="popupStopPrice" class="mt-0.5 font-extrabold text-rose-400">2,649.30</div></div><div class="rounded-xl border border-[#1a2436] bg-[#05080e] p-2.5"><span class="text-[10px] uppercase text-slate-400">Take Profit 1</span><div id="popupTp1Price" class="mt-0.5 font-extrabold text-emerald-400">2,658.80</div></div><div class="rounded-xl border border-[#1a2436] bg-[#05080e] p-2.5"><span class="text-[10px] uppercase text-slate-400">Take Profit 2</span><div id="popupTp2Price" class="mt-0.5 font-extrabold text-teal-400">2,663.50</div></div></div>
-            <div class="space-y-2"><div class="flex items-center justify-between gap-3 text-xs font-mono"><span class="font-bold uppercase text-slate-400">5m Scalp Confluence Indicators</span><span id="popupConfluenceScore" class="font-bold text-emerald-400">94% Confidence</span></div><div class="grid gap-2 text-xs font-mono"><div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-[#1a2436] bg-[#05080e] p-2.5"><div><strong class="text-slate-300">1. 5m ICT Order Block</strong><p id="popupModalIctText" class="mt-1 text-[11px] text-slate-400">Fair Value Gap detected</p></div><span id="modalSubSignalIct" class="rounded px-2 py-0.5 text-[10px] font-bold">BUY</span></div><div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-[#1a2436] bg-[#05080e] p-2.5"><div><strong class="text-slate-300">2. Fast 9/21 EMA</strong><p id="popupModalEmaText" class="mt-1 text-[11px] text-slate-400">EMA9 &gt; EMA21</p></div><span id="modalSubSignalEma" class="rounded px-2 py-0.5 text-[10px] font-bold">BUY</span></div><div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-[#1a2436] bg-[#05080e] p-2.5"><div><strong class="text-slate-300">3. 10-Period Volume</strong><p id="popupModalVolText" class="mt-1 text-[11px] text-slate-400">Volume surge</p></div><span id="modalSubSignalVol" class="rounded px-2 py-0.5 text-[10px] font-bold">NEUTRAL</span></div><div class="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-3 rounded-lg border border-[#1a2436] bg-[#05080e] p-2.5"><div><strong class="text-slate-300">4. Fast 9-RSI</strong><p id="popupModalRsiText" class="mt-1 text-[11px] text-slate-400">RSI = 32.4</p></div><span id="modalSubSignalRsi" class="rounded px-2 py-0.5 text-[10px] font-bold">BUY</span></div></div></div>
-            <button onclick="applySignalToOnChartCalc()" class="flex w-full items-center justify-center gap-2 rounded-xl border border-amber-300/30 bg-gradient-to-r from-amber-500 to-amber-600 py-3 text-xs font-mono font-extrabold text-slate-950"><i data-lucide="check" class="w-4 h-4"></i><span>AUTO-FILL SCALP INTO CALCULATOR &amp; CHART</span></button>
         </div>
-    </div>
-    <footer class="py-4 text-center text-xs text-slate-500">TRADE PRO &copy; 2026 | Powered by kiddowgee | Exness Charts</footer>
-    <script src="script.js"></script><script src="scripts/chart.js"></script>
+
+        <!-- Right: Broker Risk & Recommendation Desk -->
+        <div class="space-y-4">
+            <div class="pro-panel p-4 space-y-3 border-blue-500/30">
+                <h3 class="text-xs font-mono font-bold uppercase tracking-wider text-blue-400">1. Capital & Risk Config (Exness/Vault)</h3>
+                
+                <div class="grid grid-cols-2 gap-2 text-xs font-mono">
+                    <div>
+                        <label class="text-[11px] text-slate-400">Balance (ZAR)</label>
+                        <input id="userBalanceInput" type="number" value="10000" class="custom-input w-full mt-1">
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-slate-400">Preferred Lot Size</label>
+                        <input id="userLotSizeInput" type="number" step="0.01" value="0.10" class="custom-input w-full mt-1">
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-slate-400">Max Risk (R)</label>
+                        <input id="userRiskPercentInput" type="number" step="0.5" value="2.0" class="custom-input w-full mt-1">
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-slate-400">Target Profit (R)</label>
+                        <input id="userTargetProfitInput" type="number" step="0.5" value="4.0" class="custom-input w-full mt-1">
+                    </div>
+                </div>
+
+                <div>
+                    <label class="text-[11px] text-slate-400 font-mono">Trades Per Session / Signal Split</label>
+                    <input id="userTradesPerSessionInput" type="number" min="1" max="5" value="2" class="custom-input w-full text-xs font-mono mt-1">
+                </div>
+
+                <div id="sessionRiskBreakdownTag" class="text-[10px] font-mono text-amber-400 pt-1 border-t border-[#1a2436]">
+                    Session Risk (2 Trades): R 200.00 | Target: R 400.00
+                </div>
+            </div>
+
+            <div class="pro-panel p-4 space-y-3">
+                <div class="flex justify-between items-center border-b border-[#1a2436] pb-2">
+                    <h3 class="text-xs font-mono font-bold uppercase text-slate-300">2. Recommended Execution</h3>
+                    <span id="calcSignalDirectionTag" class="font-mono text-xs font-bold text-slate-400">NO SIGNAL LOADED</span>
+                </div>
+
+                <div class="space-y-2">
+                    <div>
+                        <label class="text-[11px] text-slate-400 font-mono">Recommended Entry</label>
+                        <input id="calcPriceEntry" type="number" step="any" readonly class="custom-input w-full text-xs font-mono mt-1 opacity-75">
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-slate-400 font-mono">Recommended Stop Loss</label>
+                        <input id="calcPriceStop" type="number" step="any" readonly class="custom-input w-full text-xs font-mono mt-1 opacity-75">
+                    </div>
+                    <div>
+                        <label class="text-[11px] text-slate-400 font-mono">Recommended Take Profit</label>
+                        <input id="calcPriceTarget" type="number" step="any" readonly class="custom-input w-full text-xs font-mono mt-1 opacity-75">
+                    </div>
+                </div>
+
+                <div class="bg-[#0f1624] p-3 rounded-xl border border-[#1a2436] space-y-1.5 text-xs font-mono">
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">Position Size:</span>
+                        <span id="lotOutVal" class="text-emerald-400 font-bold">0.10 Lots</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">Trade Loss (ZAR):</span>
+                        <span id="outPossibleLoss" class="text-rose-400 font-bold">-R 100.00</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">Trade Target (ZAR):</span>
+                        <span id="outPossibleProfit" class="text-emerald-400 font-bold">+R 200.00</span>
+                    </div>
+                    <div class="border-t border-[#1a2436] pt-1.5 flex justify-between">
+                        <span class="text-slate-400">Rem. Balance (If Loss):</span>
+                        <span id="outRemBalLoss" class="text-slate-200 font-bold">R 9,900.00</span>
+                    </div>
+                    <div class="flex justify-between">
+                        <span class="text-slate-400">Rem. Balance (If Profit):</span>
+                        <span id="outRemBalWin" class="text-emerald-400 font-bold">R 10,200.00</span>
+                    </div>
+                </div>
+
+                <div class="space-y-2 pt-1">
+                    <button onclick="confirmSignalAndOpenTrade()" class="w-full py-2.5 rounded-xl font-mono text-xs font-extrabold bg-emerald-500 text-slate-950 hover:bg-emerald-400 shadow-lg">CONFIRM SIGNAL & OPEN TRADE</button>
+                    <button onclick="rejectAndWaitNextSignal()" class="w-full py-2 rounded-xl font-mono text-xs font-bold bg-[#0f1624] text-slate-400 border border-[#1a2436] hover:text-white">REJECT & WAIT FOR NEXT SIGNAL</button>
+                </div>
+            </div>
+
+            <!-- Active Position Panel -->
+            <div id="openTradePanel" class="hidden pro-panel p-4 space-y-3 border-amber-500/30 bg-amber-500/5">
+                <div class="flex justify-between items-center border-b border-[#1a2436] pb-2">
+                    <span class="text-xs font-mono font-bold text-amber-400">ACTIVE POSITION & DRAWING</span>
+                    <span id="openTradeAsset" class="text-xs font-mono font-bold text-white">XAUUSD</span>
+                </div>
+
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-slate-400">Direction:</span>
+                    <span id="openTradeDirection" class="text-emerald-400 font-bold">BUY</span>
+                </div>
+
+                <div class="flex justify-between text-xs font-mono">
+                    <span class="text-slate-400">Unrealized P&L:</span>
+                    <span id="openTradeLivePnl" class="text-emerald-400 font-extrabold">R 0.00</span>
+                </div>
+
+                <button onclick="finalizeOpenTrade(livePrices[activeOpenTrade.asset], 'Confirmed Closed', 'info')" class="w-full py-2 rounded-xl font-mono text-xs font-bold bg-rose-500/20 text-rose-300 border border-rose-500/40 hover:bg-rose-500/30">confirm trade closure</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- 15-MINUTE MACRO SIGNAL PAGE -->
+    <main id="page-signal15m" class="hidden max-w-2xl mx-auto space-y-4">
+        <div class="flex justify-between items-center">
+            <h2 class="text-base font-mono font-bold text-white">15-Minute Macro Higher Timeframe Radar</h2>
+            <div class="flex gap-2">
+                <button onclick="switchSignal15mAsset('XAUUSD')" class="px-3 py-1 rounded-lg text-xs font-mono font-bold bg-amber-500/20 text-amber-400 border border-amber-500/40">XAUUSD</button>
+                <button onclick="switchSignal15mAsset('EURUSD')" class="px-3 py-1 rounded-lg text-xs font-mono font-bold bg-[#0f1624] text-slate-400 border border-[#1a2436]">EURUSD</button>
+                <button onclick="switchSignal15mAsset('US100')" class="px-3 py-1 rounded-lg text-xs font-mono font-bold bg-[#0f1624] text-slate-400 border border-[#1a2436]">US100</button>
+            </div>
+        </div>
+        <div id="signal15mCard" class="pro-panel p-5 border-amber-500/30"></div>
+    </main>
+
+    <!-- 5-MINUTE MICRO SCALP SIGNAL PAGE -->
+    <main id="page-signal5m" class="hidden max-w-2xl mx-auto space-y-4">
+        <div class="flex justify-between items-center">
+            <h2 class="text-base font-mono font-bold text-white">5-Minute Micro Execution Scalp Radar</h2>
+            <div class="flex gap-2">
+                <button onclick="switchSignal5mAsset('XAUUSD')" class="px-3 py-1 rounded-lg text-xs font-mono font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/40">XAUUSD</button>
+                <button onclick="switchSignal5mAsset('EURUSD')" class="px-3 py-1 rounded-lg text-xs font-mono font-bold bg-[#0f1624] text-slate-400 border border-[#1a2436]">EURUSD</button>
+                <button onclick="switchSignal5mAsset('US100')" class="px-3 py-1 rounded-lg text-xs font-mono font-bold bg-[#0f1624] text-slate-400 border border-[#1a2436]">US100</button>
+            </div>
+        </div>
+        <div id="signal5mCard" class="pro-panel p-5 border-emerald-500/30"></div>
+    </main>
+
+    <!-- NEWS EVENTS PAGE -->
+    <main id="page-events" class="hidden max-w-4xl mx-auto space-y-4">
+        <h2 class="text-base font-mono font-bold text-white">Live Economic News Calendar</h2>
+        <div id="eventsListContainer" class="grid grid-cols-1 md:grid-cols-2 gap-4"></div>
+    </main>
+
+    <!-- TRADING JOURNAL PAGE -->
+    <main id="page-journal" class="hidden pro-panel p-5 space-y-4">
+        <h2 class="text-base font-mono font-bold text-white">Closed Trades Journal</h2>
+        <div class="overflow-x-auto">
+            <table class="w-full text-left border-collapse">
+                <thead>
+                    <tr class="border-b border-[#1a2436] text-[11px] font-mono text-slate-400">
+                        <th class="p-3">Time</th>
+                        <th class="p-3">Asset</th>
+                        <th class="p-3">Type</th>
+                        <th class="p-3">Lot</th>
+                        <th class="p-3">Entry</th>
+                        <th class="p-3">Exit</th>
+                        <th class="p-3">P&L (ZAR)</th>
+                        <th class="p-3">Note</th>
+                    </tr>
+                </thead>
+                <tbody id="journalTableBody"></tbody>
+            </table>
+        </div>
+    </main>
+
 </body>
 </html>
